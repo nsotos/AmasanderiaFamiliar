@@ -41,7 +41,15 @@ export const setupDatabase = async () => {
         estado TEXT DEFAULT 'Pendiente',
         abono INTEGER DEFAULT 0,
         sincronizado INTEGER DEFAULT 0 /*Para verificar y actualizar datos en firebase.*/
-    );`);
+    );
+
+    INSERT OR IGNORE INTO productos (id_producto, nombre, precio_unitario) VALUES
+      (1, 'Hallulla Especial', 2000),
+      (2, 'Marraqueta Crujiente', 1800),
+      (3, 'Pan de Molde Artesanal', 3500),
+      (4, 'Empanada de Pino', 2500),
+      (5, 'Queque Casero Vainilla', 4500);
+  `);
   console.log("Base de datos inicializada correctamente");
   return db;
 };
