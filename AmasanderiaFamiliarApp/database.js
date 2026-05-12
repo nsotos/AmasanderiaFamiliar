@@ -1,7 +1,7 @@
-import * as SQLite from 'expo-sqlite';
+import * as SQLite from "expo-sqlite";
 
 export const setupDatabase = async () => {
-  const db = await SQLite.openDatabaseAsync('AmasanderiaFamiliar.sqlite');
+  const db = await SQLite.openDatabaseAsync("AmasanderiaFamiliar.sqlite");
   await db.execAsync(`
     PRAGMA foreign_keys = ON;
     
