@@ -1,57 +1,168 @@
-import React from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
+import React from "react";
+import {
+  StyleSheet,
+  Text,
+  View,
+  TouchableOpacity,
+  Alert,
+  SafeAreaView,
+  Platform,
+} from "react-native";
+import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons"; // Expo incluye esta librería por defecto
 
 export default function HomeScreen() {
   const router = useRouter();
 
-  const handleButton1 = () => {
-    router.push('/ventas');
-  };
-
-  const handleButton2 = () => {
-    // Futuro: router.push('/pedidos');
-    Alert.alert('Pedidos', 'Funcionalidad pendiente - Navegar a pedidos');
-  };
-
-  const handleButton3 = () => {
-    // Futuro: router.push('/recetas');
-    Alert.alert('Recetas', 'Funcionalidad pendiente - Navegar a recetas');
-  };
-
-  const handleButton4 = () => {
-    router.push('/productos');
-  };
+  // Estructuramos las opciones del menú en un arreglo para un código más limpio
+  const menuOptions = [
+    {
+      id: "ventas",
+      title: "Ventas",
+      subtitle: "Registrar nueva",
+      icon: "cart-outline",
+      color: "#10B981", // Esmeralda (Principal)
+      action: () => router.push("/ventas"),
+    },
+    {
+      id: "productos",
+      title: "Productos",
+      subtitle: "Inventario",
+      icon: "cube-outline",
+      color: "#8B5CF6", // Púrpura
+      action: () => router.push("/productos"),
+    },
+    {
+      id: "pedidos",
+      title: "Pedidos",
+      subtitle: "Por entregar",
+      icon: "clipboard-outline",
+      color: "#3B82F6", // Azul
+      action: () =>
+        Alert.alert("Pedidos", "Funcionalidad pendiente - Navegar a pedidos"),
+    },
+    {
+      id: "recetas",
+      title: "Recetas",
+      subtitle: "Preparaciones",
+      icon: "book-outline",
+      color: "#F59E0B", // Naranja
+      action: () =>
+        Alert.alert("Recetas", "Funcionalidad pendiente - Navegar a recetas"),
+    },
+  ];
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Bienvenido a Amasandería Familiar</Text>
-      <Text style={styles.subtitle}>¿Qué haremos hoy?</Text>
-      <View style={styles.buttonContainer}>
-        <TouchableOpacity style={styles.button} onPress={handleButton1}>
-          <Text style={styles.buttonText}>Ventas</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.button} onPress={handleButton2}>
-          <Text style={styles.buttonText}>Pedidos</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.button} onPress={handleButton3}>
-          <Text style={styles.buttonText}>Recetas</Text>
-        </TouchableOpacity>
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.container}>
+        {/* Cabecera */}
+        <View style={styles.header}>
+          <Text style={styles.greeting} accessibilityRole="header">
+            ¡Hola! 👋
+          </Text>
+          <Text style={styles.title}>Amasandería Familiar</Text>
+          <Text style={styles.subtitle}>¿Qué haremos hoy?</Text>
+        </View>
+
+        {/* Cuadrícula de Botones (Dashboard) */}
+        <View style={styles.gridContainer}>
+          {menuOptions.map((option) => (
+            <TouchableOpacity
+              key={option.id}
+              style={styles.card}
+              onPress={option.action}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`Ir a la sección de ${option.title}`}
+              accessibilityHint={option.subtitle}
+            >
+              <View
+                style={[
+                  styles.iconContainer,
+                  { backgroundColor: `${option.color}15` },
+                ]}
+              >
+                {/* @ts-ignore - Tipado de Ionicons */}
+                <Ionicons name={option.icon} size={32} color={option.color} />
+              </View>
+              <Text style={styles.cardTitle}>{option.title}</Text>
+              <Text style={styles.cardSubtitle}>{option.subtitle}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
-      <TouchableOpacity style={styles.productButton} onPress={handleButton4}>
-        <Text style={styles.productButtonText}>Productos</Text>
-      </TouchableOpacity>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F5F5', alignItems: 'center', justifyContent: 'center', padding: 20 },
-  title: { fontSize: 28, fontWeight: 'bold', marginBottom: 10, textAlign: 'center' },
-  subtitle: { fontSize: 20, fontWeight: '500', color: '#666', marginBottom: 40, textAlign: 'center' },
-  buttonContainer: { flex: 1, flexDirection: 'column', justifyContent: 'space-around', width: '100%', alignItems: 'center', paddingTop: 20, paddingBottom: 20 },
-  button: { backgroundColor: '#4CAF50', paddingVertical: 50, paddingHorizontal: 40, borderRadius: 20, marginVertical: 10, width: '80%', justifyContent: 'center', alignItems: 'center' },
-  productButton: { position: 'absolute', bottom: 10, right: 20, backgroundColor: '#FF9800', paddingVertical: 15, paddingHorizontal: 14, borderRadius: 16, elevation: 4 },
-  productButtonText: { color: '#FFF', fontSize: 14, fontWeight: 'bold' },
-  buttonText: { color: '#FFF', fontSize: 18, fontWeight: 'bold' }
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#F9FAFB", // Fondo muy claro, más moderno que #F5F5F5
+  },
+  container: {
+    flex: 1,
+    paddingHorizontal: 24,
+    paddingTop: Platform.OS === "android" ? 40 : 20,
+  },
+  header: {
+    marginBottom: 32,
+    marginTop: 20,
+  },
+  greeting: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#6B7280",
+    marginBottom: 4,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: "800",
+    color: "#111827",
+    marginBottom: 8,
+    letterSpacing: -0.5,
+  },
+  subtitle: {
+    fontSize: 16,
+    fontWeight: "400",
+    color: "#6B7280",
+  },
+  gridContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    gap: 16, // Requiere React Native 0.71+, si usas uno más antiguo, usa márgenes en las tarjetas
+  },
+  card: {
+    width: "47%", // Dos columnas con espacio en el medio
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 20,
+    // Sombras modernas y sutiles
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+    marginBottom: 16,
+  },
+  iconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1F2937",
+    marginBottom: 4,
+  },
+  cardSubtitle: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: "#9CA3AF",
+  },
 });

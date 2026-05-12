@@ -6,6 +6,8 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
@@ -70,107 +72,168 @@ export default function ModalScreen() {
   };
 
   return (
-    <ThemedView style={styles.container}>
-      <ThemedText type="title">
-        {isEditing ? "Editar producto" : "Crear producto"}
-      </ThemedText>
-      <ThemedText style={styles.description}>
-        {isEditing
-          ? "Modifica el nombre y el precio del producto seleccionado."
-          : "Agrega un nuevo producto con nombre y precio."}
-      </ThemedText>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      <ThemedView style={styles.container}>
+        <View style={styles.header}>
+          <ThemedText type="title" style={styles.title}>
+            {isEditing ? "Editar Producto" : "Nuevo Producto"}
+          </ThemedText>
+          <ThemedText style={styles.description}>
+            {isEditing
+              ? "Modifica el nombre y el precio del producto seleccionado."
+              : "Agrega un nuevo producto con nombre y precio para el inventario."}
+          </ThemedText>
+        </View>
 
-      <View style={styles.form}>
-        <Text style={styles.label}>Nombre</Text>
-        <TextInput
-          style={styles.input}
-          value={nombre}
-          onChangeText={setNombre}
-          placeholder="Nombre del producto"
-        />
+        <View style={styles.form}>
+          {/* Input: Nombre */}
+          <View>
+            <Text style={styles.label}>Nombre</Text>
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={styles.textInput}
+                value={nombre}
+                onChangeText={setNombre}
+                placeholder="Ej. Manzanas"
+                placeholderTextColor="#9CA3AF"
+              />
+            </View>
+          </View>
 
-        <Text style={styles.label}>Precio unitario</Text>
-        <TextInput
-          style={styles.input}
-          value={precioUnitario}
-          onChangeText={setPrecioUnitario}
-          placeholder="0"
-          keyboardType="numeric"
-        />
+          {/* Input: Precio unitario */}
+          <View>
+            <Text style={styles.label}>Precio unitario ($)</Text>
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={[styles.textInput, styles.priceInput]}
+                value={precioUnitario}
+                onChangeText={setPrecioUnitario}
+                placeholder="0.00"
+                placeholderTextColor="#9CA3AF"
+                keyboardType="decimal-pad"
+              />
+            </View>
+          </View>
 
-        <TouchableOpacity
-          style={[styles.saveButton, guardando && styles.saveButtonDisabled]}
-          onPress={handleGuardar}
-          disabled={guardando}
-        >
-          <Text style={styles.saveButtonText}>
-            {guardando
-              ? "Guardando..."
-              : isEditing
-                ? "Guardar cambios"
-                : "Crear producto"}
-          </Text>
-        </TouchableOpacity>
+          {/* Botones */}
+          <View style={styles.footer}>
+            <TouchableOpacity
+              style={[
+                styles.saveButton,
+                guardando && styles.saveButtonDisabled,
+              ]}
+              onPress={handleGuardar}
+              disabled={guardando}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.saveButtonText}>
+                {guardando
+                  ? "Guardando..."
+                  : isEditing
+                    ? "Guardar Cambios"
+                    : "Crear Producto"}
+              </Text>
+            </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.cancelButton}
-          onPress={() => router.back()}
-        >
-          <Text style={styles.cancelButtonText}>Cancelar</Text>
-        </TouchableOpacity>
-      </View>
-    </ThemedView>
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => router.back()}
+              activeOpacity={0.6}
+            >
+              <Text style={styles.cancelButtonText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ThemedView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: "center",
-    padding: 20,
+    paddingHorizontal: 24,
+    paddingTop: 40,
+  },
+  header: {
+    marginBottom: 24,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: "800",
+    marginBottom: 8,
   },
   description: {
-    marginTop: 10,
-    marginBottom: 24,
-    textAlign: "center",
+    fontSize: 15,
+    color: "#6B7280",
+    lineHeight: 22,
   },
   form: {
-    gap: 12,
+    gap: 20,
   },
   label: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "600",
+    color: "#ffffff",
+    marginBottom: 8,
+    marginLeft: 4,
   },
-  input: {
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#D0D0D0",
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F3F4F6",
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    height: 56,
+  },
+  textInput: {
+    flex: 1,
     fontSize: 16,
+    color: "#1F2937",
+    height: "100%",
+  },
+  priceInput: {
+    fontWeight: "600",
+    color: "#10B981", // Un toque verde para los precios (opcional, acorde al diseño)
+  },
+  footer: {
+    marginTop: 12,
+    gap: 12,
   },
   saveButton: {
-    backgroundColor: "#4CAF50",
-    paddingVertical: 14,
-    borderRadius: 10,
+    backgroundColor: "#10B981",
+    height: 56,
+    borderRadius: 14,
+    justifyContent: "center",
     alignItems: "center",
-    marginTop: 8,
+    shadowColor: "#10B981",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   saveButtonDisabled: {
-    opacity: 0.7,
+    backgroundColor: "#9CA3AF",
+    shadowOpacity: 0,
+    elevation: 0,
   },
   saveButtonText: {
-    color: "#FFF",
-    fontSize: 16,
+    color: "#FFFFFF",
+    fontSize: 17,
     fontWeight: "700",
   },
   cancelButton: {
-    paddingVertical: 14,
+    height: 56,
+    borderRadius: 14,
+    justifyContent: "center",
     alignItems: "center",
+    backgroundColor: "transparent",
   },
   cancelButtonText: {
-    color: "#666",
+    color: "#6B7280",
     fontSize: 16,
     fontWeight: "600",
   },
