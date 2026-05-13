@@ -15,6 +15,8 @@ import { setupDatabase } from "../database";
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { Colors } from "@/constants/theme";
+import { useColorScheme } from "@/hooks/use-color-scheme";
 
 export default function ModalScreen() {
   const router = useRouter();
@@ -30,6 +32,8 @@ export default function ModalScreen() {
   const [nombre, setNombre] = useState("");
   const [precioUnitario, setPrecioUnitario] = useState("");
   const [guardando, setGuardando] = useState(false);
+  const colorScheme = useColorScheme() ?? 'light';
+  const theme = Colors[colorScheme];
 
   useEffect(() => {
     if (typeof params.nombre === "string") setNombre(params.nombre);
@@ -98,7 +102,7 @@ export default function ModalScreen() {
                 value={nombre}
                 onChangeText={setNombre}
                 placeholder="Ej. Manzanas"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor="#94A3B8"
               />
             </View>
           </View>
@@ -112,7 +116,7 @@ export default function ModalScreen() {
                 value={precioUnitario}
                 onChangeText={setPrecioUnitario}
                 placeholder="0.00"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor="#94A3B8"
                 keyboardType="decimal-pad"
               />
             </View>
@@ -168,7 +172,7 @@ const styles = StyleSheet.create({
   },
   description: {
     fontSize: 15,
-    color: "#6B7280",
+    color: "#475569",
     lineHeight: 22,
   },
   form: {
@@ -177,14 +181,14 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#ffffff",
+    color: "#334155",
     marginBottom: 8,
     marginLeft: 4,
   },
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F3F4F6",
+    backgroundColor: "#EFF6FF",
     borderRadius: 14,
     paddingHorizontal: 16,
     height: 56,
@@ -192,31 +196,31 @@ const styles = StyleSheet.create({
   textInput: {
     flex: 1,
     fontSize: 16,
-    color: "#1F2937",
+    color: "#0F172A",
     height: "100%",
   },
   priceInput: {
     fontWeight: "600",
-    color: "#10B981", // Un toque verde para los precios (opcional, acorde al diseño)
+    color: "#2563EB", // Azul profesional para los precios
   },
   footer: {
     marginTop: 12,
     gap: 12,
   },
   saveButton: {
-    backgroundColor: "#10B981",
+    backgroundColor: "#2563EB",
     height: 56,
     borderRadius: 14,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#10B981",
+    shadowColor: "rgba(37,99,235,0.25)",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 4,
   },
   saveButtonDisabled: {
-    backgroundColor: "#9CA3AF",
+    backgroundColor: "#CBD5E1",
     shadowOpacity: 0,
     elevation: 0,
   },
@@ -233,7 +237,7 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   cancelButtonText: {
-    color: "#6B7280",
+    color: "#475569",
     fontSize: 16,
     fontWeight: "600",
   },

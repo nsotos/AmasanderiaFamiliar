@@ -12,7 +12,9 @@ import {
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { setupDatabase } from "../database";
+import { setupDatabase } from "../../database";
+import { Colors } from "@/constants/theme";
+import { useColorScheme } from "@/hooks/use-color-scheme";
 
 interface Producto {
   id_producto: number;
@@ -24,6 +26,8 @@ export default function ProductosScreen() {
   const router = useRouter();
   const [productos, setProductos] = useState<Producto[]>([]);
   const [cargando, setCargando] = useState(true);
+  const colorScheme = useColorScheme() ?? "light";
+  const theme = Colors[colorScheme];
 
   const cargarProductos = async () => {
     setCargando(true);
@@ -67,7 +71,7 @@ export default function ProductosScreen() {
         { text: "Cancelar", style: "cancel" },
         {
           text: "Eliminar",
-          style: "destructive", // En iOS esto pone el texto en rojo automáticamente
+          style: "destructive",
           onPress: async () => {
             setCargando(true);
             try {
@@ -88,12 +92,13 @@ export default function ProductosScreen() {
     );
   };
 
-  // Componente para cuando no hay productos registrados
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
-      <Ionicons name="cube-outline" size={64} color="#D1D5DB" />
-      <Text style={styles.emptyTitle}>No hay productos</Text>
-      <Text style={styles.emptySubtitle}>
+      <Ionicons name="cube-outline" size={64} color={theme.border} />
+      <Text style={[styles.emptyTitle, { color: theme.text }]}>
+        No hay productos
+      </Text>
+      <Text style={[styles.emptySubtitle, { color: theme.icon }]}>
         Toca el botón inferior para comenzar a agregar productos a tu
         inventario.
       </Text>
@@ -101,19 +106,21 @@ export default function ProductosScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
       <View style={styles.container}>
         {/* Cabecera */}
         <View style={styles.header}>
-          <Text style={styles.title} accessibilityRole="header">
+          <Text style={[styles.title, { color: theme.text }]} accessibilityRole="header">
             Productos
           </Text>
-          <Text style={styles.subtitle}>Gestiona tu inventario</Text>
+          <Text style={[styles.subtitle, { color: theme.icon }]}>
+            Gestiona tu inventario
+          </Text>
         </View>
 
         {cargando ? (
           <View style={styles.centerAll}>
-            <ActivityIndicator size="large" color="#10B981" />
+            <ActivityIndicator size="large" color={theme.tint} />
           </View>
         ) : (
           <FlatList
@@ -125,10 +132,12 @@ export default function ProductosScreen() {
             }
             ListEmptyComponent={renderEmptyState}
             renderItem={({ item }) => (
-              <View style={styles.productCard}>
+              <View style={[styles.productCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                 <View style={styles.productInfo}>
-                  <Text style={styles.productName}>{item.nombre}</Text>
-                  <Text style={styles.productPrice}>
+                  <Text style={[styles.productName, { color: theme.text }]}>
+                    {item.nombre}
+                  </Text>
+                  <Text style={[styles.productPrice, { color: theme.tint }]}>
                     ${item.precio_unitario}
                   </Text>
                 </View>
@@ -136,13 +145,13 @@ export default function ProductosScreen() {
                 <View style={styles.actionsContainer}>
                   {/* Botón Editar */}
                   <TouchableOpacity
-                    style={styles.iconButton}
+                    style={[styles.iconButton, { backgroundColor: `${theme.tint}18` }]}
                     onPress={() => handleEditarProducto(item)}
                     activeOpacity={0.6}
                     accessibilityRole="button"
                     accessibilityLabel={`Editar producto ${item.nombre}`}
                   >
-                    <Ionicons name="pencil" size={20} color="#4B5563" />
+                    <Ionicons name="pencil" size={20} color={theme.icon} />
                   </TouchableOpacity>
 
                   {/* Botón Eliminar */}
@@ -153,7 +162,7 @@ export default function ProductosScreen() {
                     accessibilityRole="button"
                     accessibilityLabel={`Eliminar producto ${item.nombre}`}
                   >
-                    <Ionicons name="trash" size={20} color="#EF4444" />
+                    <Ionicons name="trash" size={20} color="#F87171" />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -163,7 +172,7 @@ export default function ProductosScreen() {
 
         {/* Botón Flotante (Extended FAB) */}
         <TouchableOpacity
-          style={styles.fab}
+          style={[styles.fab, { backgroundColor: theme.tint }]}
           onPress={handleAgregarProducto}
           activeOpacity={0.8}
           accessibilityRole="button"
@@ -180,7 +189,6 @@ export default function ProductosScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#F9FAFB",
   },
   container: {
     flex: 1,
@@ -198,30 +206,28 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: "800",
-    color: "#111827",
     marginBottom: 4,
     letterSpacing: -0.5,
   },
   subtitle: {
     fontSize: 16,
-    color: "#6B7280",
     fontWeight: "400",
   },
   productList: {
-    paddingBottom: 100, // Espacio para que el FAB no tape el último elemento
+    paddingBottom: 100,
   },
   listEmpty: {
     flex: 1,
     justifyContent: "center",
   },
   productCard: {
-    backgroundColor: "#FFFFFF",
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    borderWidth: 1,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
@@ -235,13 +241,11 @@ const styles = StyleSheet.create({
   productName: {
     fontSize: 17,
     fontWeight: "700",
-    color: "#1F2937",
     marginBottom: 4,
   },
   productPrice: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#10B981", // Verde esmeralda para el precio
   },
   actionsContainer: {
     flexDirection: "row",
@@ -251,25 +255,23 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: "#F3F4F6", // Fondo gris claro
     justifyContent: "center",
     alignItems: "center",
   },
   deleteIconContainer: {
-    backgroundColor: "#FEF2F2", // Fondo rojo muy claro
+    backgroundColor: "#FEE2E2",
   },
   /* --- BOTÓN FLOTANTE (FAB) --- */
   fab: {
     position: "absolute",
     bottom: Platform.OS === "ios" ? 40 : 32,
     right: 24,
-    backgroundColor: "#10B981", // Verde principal
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 14,
     paddingHorizontal: 20,
-    borderRadius: 999, // Bordes completamente redondeados (forma de píldora)
-    shadowColor: "#10B981",
+    borderRadius: 999,
+    shadowColor: "#2563EB",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -289,13 +291,11 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 20,
     fontWeight: "700",
-    color: "#374151",
     marginTop: 16,
     marginBottom: 8,
   },
   emptySubtitle: {
     fontSize: 15,
-    color: "#6B7280",
     textAlign: "center",
     lineHeight: 22,
   },

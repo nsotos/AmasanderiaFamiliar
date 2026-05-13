@@ -1,0 +1,118 @@
+﻿Informe Propuesta de Proyecto Taller de Sistemas de InformaciÃ³n
+Herramienta digital para AmasanderÃ­a Familiar
+Integrantes: Diego Roman, Nicolas Soto, Matias Ponce y Rodrigo Parada
+Nombre asignatura: Taller de sistemas de informaciÃ³n
+Profesor: Luis GutiÃ©rrez Salazar
+Fecha: 22 de abril 2026
+Ãndice
+3. Resumen2
+4.- DescripciÃ³n general de la empresa.3
+5. Objetivos3
+Objetivo General:3
+Objetivos EspecÃ­ficos:3
+6.- DescripciÃ³n general del problema.4
+7.- Alcance del Proyecto.5
+8.- MetodologÃ­a6
+9.-Cronograma de actividades7
+10.-Recursos a utilizar8
+11.-Analisis de riesgo9
+1.-Problemas de usabilidad del sistema10
+2.-Errores en el sistema y falta de pruebas10
+3.-Retrasos en el desarrollo o cambios en los requerimientos10
+12. OrganizaciÃ³n del Grupo Proyecto11
+DescripciÃ³n de roles y responsabilidades11
+13.- Consecuencias del Sistema de InformaciÃ³n11
+3. Resumen
+Este proyecto propone el desarrollo de una herramienta digital sencilla para una amasanderÃ­a familiar enfocada en panaderÃ­a y pastelerÃ­a artesanal. El sistema que se va a desarrollar servirÃ¡ para llevar un registro rÃ¡pido de ventas, gestionar una agenda de encargos ordenados por fecha y hora, y administrar fichas de clientes. Los beneficios esperados para la organizaciÃ³n consisten en evitar la pÃ©rdida de informaciÃ³n, asegurar que no se olviden los encargos y mantener un control preciso sobre las ganancias reales. Con esto, se busca reemplazar el almacenamiento fÃ­sico actual en cuadernos, el cual estÃ¡ expuesto a pÃ©rdidas y daÃ±os.
+4.- DescripciÃ³n general de la empresa. 
+Esta pyme es una amasanderÃ­a familiar de carÃ¡cter informal que opera desde el hogar de sus dueÃ±os en Av. Departamental #1927 enfocÃ¡ndose en el rubro de la panaderÃ­a y pastelerÃ­a artesanal para los vecinos de su sector. La organizaciÃ³n estÃ¡ compuesta permanentemente por dos personas, quienes se encargan de todas las etapas del negocio, desde la producciÃ³n hasta la venta directa. Su oferta principal es el pan amasado, el cual venden de forma constante durante todo el aÃ±o (salvo en Fiestas Patrias), ademÃ¡s de una variedad de productos a pedido como kuchenes, tortas, queques, pies de limÃ³n, pan de pascua y empanadas. Actualmente, el negocio enfrenta un problema de organizaciÃ³n, ya que todos sus registros se llevan manualmente en papel. Al ser una atenciÃ³n basada en la cercanÃ­a con los vecinos, el uso de cuadernos facilita que se pierda informaciÃ³n, se olviden encargos o se pierda el control sobre las ganancias reales, evidenciando la necesidad de una herramienta digital sencilla que permita ordenar las ventas y los pedidos de manera mÃ¡s segura.
+5. Objetivos
+Objetivo General:
+Implementar una herramienta digital sencilla que permita ordenar las ventas y los pedidos de manera mÃ¡s segura para la amasanderÃ­a familiar.
+Objetivos EspecÃ­ficos:
+Analizar el sistema de gestiÃ³n manual actual, el cual se resuelve mediante anotaciones en cuadernos y hojas sueltas.
+DiseÃ±ar las funciones centrales del sistema, incluyendo un registro rÃ¡pido de ventas, una agenda de encargos y fichas de clientes para monitorear deudas pendientes.
+Desarrollar un reporte de resumen de ganancias que calcule los ingresos diarios y semanales, separando la venta de pan de los encargos a pedido.
+6.- DescripciÃ³n general del problema. 
+El problema central de la amasanderÃ­a radica en su sistema de gestiÃ³n completamente manual, donde todas las operaciones se resuelven mediante anotaciones en mÃºltiples cuadernos y hojas sueltas. Actualmente, cuando un vecino realiza un pedido, la informaciÃ³n se registra de forma improvisada, lo que obliga a los dueÃ±os a depender de su memoria y a revisar manualmente hojas pasadas para verificar deudas o detalles de entrega. Este almacenamiento fÃ­sico es sumamente frÃ¡gil, ya que los datos estÃ¡n expuestos a pÃ©rdidas, daÃ±os por el calor de los hornos o desorden acumulado, lo que pone en riesgo aÃ±os de historia del negocio. El flujo de datos es rudimentario: el dato nace con el pedido del vecino, se anota en el cuaderno para guiar la producciÃ³n del dÃ­a y finalmente se tacha al concretar el cobro, sin que exista un procesamiento real para calcular ganancias o inventario de forma automÃ¡tica. En cuanto a los usuarios, el sistema es operado exclusivamente por los dos miembros de la familia, quienes actÃºan como administradores y cocineros a la vez, necesitando una soluciÃ³n que simplifique su trabajo diario sin procesos complejos, mientras que el vecino actÃºa como un usuario indirecto cuyo beneficio principal serÃ¡ recibir un servicio mÃ¡s ordenado y confiable.
+7.- Alcance del Proyecto.
+Este programa harÃ¡:
+1.-Registro RÃ¡pido de Ventas: Un botÃ³n grande para marcar "Venta de Pan" con un solo toque, sumando automÃ¡ticamente al total del dÃ­a.
+2.-Agenda de Encargos: Una lista de tareas ordenada por fecha y hora de entrega. El sistema deberÃ­a resaltar los pedidos que deben entregarse en las prÃ³ximas 3 horas para que no se les olvide nada.
+3.-Fichas de Clientes (Vecinos): Un registro simple con el nombre del vecino y su telÃ©fono, que permita ver si tiene "fiados" (deudas) pendientes o quÃ© suele comprar siempre.
+4.-Resumen de Ganancias: Un reporte diario y semanal que sume cuÃ¡nto dinero entrÃ³, separando lo que fue venta de pan de lo que fueron encargos (tortas, kuchens).
+5.-Estado de Pedidos: Poder marcar un encargo como "Pendiente", "En preparaciÃ³n" o "Entregado".
+Este programa no harÃ¡:
+1.-No es un sistema contable legal: Al ser un negocio informal, el programa no emitirÃ¡ boletas del SII (Servicios de Impuestos Internos) ni facturas.
+2.-No manejarÃ¡ inventario automatizado: No restarÃ¡ "gramos de harina" por cada pan vendido. Eso es muy complejo para una pyme de dos personas; es mejor que ellos sigan revisando el saco de harina a ojo.
+3.-No tendrÃ¡ pagos integrados: El cobro seguirÃ¡ siendo en efectivo o transferencia directa; el software solo servirÃ¡ para anotar que ya se pagÃ³.
+4.-Sin acceso para clientes: Por ahora, el software serÃ­a solo para uso interno de los dos dueÃ±os. Los clientes seguirÃ¡n pidiendo por WhatsApp o en persona.
+8.- MetodologÃ­a 
+MetodologÃ­a para el desarrollo del proyecto: Se utilizarÃ¡ el marco de trabajo Scrum, adaptado a un equipo de cuatro integrantes y a los plazos acadÃ©micos establecidos. El desarrollo se dividirÃ¡ en cuatro Sprints de aproximadamente dos semanas cada uno, lo que permitirÃ¡ avanzar de forma incremental y asegurar una entrega funcional para el mes de julio.
+MetodologÃ­a para el diseÃ±o del producto: Se aplicarÃ¡ un enfoque de DiseÃ±o Responsivo (Mobile-First). Dado que los usuarios operan en un entorno de producciÃ³n activa, se priorizarÃ¡ la creaciÃ³n de prototipos optimizados para telÃ©fonos inteligentes, con interfaces de botones grandes y lectura clara que faciliten el registro rÃ¡pido de ventas.
+MetodologÃ­a para la programaciÃ³n: El sistema se construirÃ¡ utilizando el stack tecnolÃ³gico React Native para el Frontend, junto con Node.js y Express para la lÃ³gica del servidor. La persistencia de datos se gestionarÃ¡ mediante MySQL, asegurando la integridad de los registros de ventas y clientes. AdemÃ¡s, se utilizarÃ¡ Git como sistema de control de versiones para coordinar el trabajo simultÃ¡neo de los cuatro miembros del equipo.
+9.-Cronograma de actividades 
+El desarrollo del proyecto se planificÃ³ utilizando una carta Gantt, en la cual se establecen las distintas fases, tareas y tiempos necesarios para la construcciÃ³n del sistema. Esta planificaciÃ³n permite organizar de manera clara el trabajo del equipo, definiendo un orden lÃ³gico de las actividades desde la etapa inicial hasta la entrega final.
+El proyecto se desarrollarÃ¡ entre el 08 de abril y el 14 de julio de 2026, considerando las siguientes etapas principales:
+1.-Fase de PlanificaciÃ³n:
+ Durante esta etapa se realizarÃ¡ el levantamiento de requerimientos, el anÃ¡lisis del problema y la definiciÃ³n de las funcionalidades del sistema. TambiÃ©n se establecerÃ¡n los objetivos y el alcance del proyecto. 
+2.-Fase de DiseÃ±o:
+ En esta fase se desarrollarÃ¡ la estructura del sistema y el diseÃ±o de la interfaz de usuario, considerando un enfoque simple e intuitivo adaptado al uso en dispositivos mÃ³viles. 
+3.-Fase de Desarrollo:
+ Corresponde a la implementaciÃ³n del sistema, donde se programarÃ¡n las funcionalidades principales como el registro de ventas, la gestiÃ³n de encargos, las fichas de clientes y el cÃ¡lculo de ganancias. 
+4.-Fase de ImplementaciÃ³n y Pruebas:
+ Se realizarÃ¡n pruebas del sistema para detectar errores y asegurar su correcto funcionamiento. AdemÃ¡s, se harÃ¡n ajustes finales antes de la entrega. 
+5.-Fase de Cierre:
+ Incluye la entrega final del sistema y la documentaciÃ³n del proyecto.
+10.-Recursos a utilizar 
+Para el desarrollo del sistema se utilizarÃ¡n recursos tanto de software como de hardware, los cuales permitirÃ¡n construir, probar e implementar la aplicaciÃ³n de manera adecuada.
+Software:
+Se utilizarÃ¡n herramientas de desarrollo modernas y en su mayorÃ­a gratuitas, adecuadas para un proyecto acadÃ©mico y para el tipo de sistema propuesto:
+1.-React Native: utilizado para el desarrollo de la aplicaciÃ³n mÃ³vil, permitiendo que funcione tanto en Android como en iOS. 
+2.-Node.js y Express: utilizados para el desarrollo del backend, encargÃ¡ndose de la lÃ³gica del sistema y la gestiÃ³n de datos. 
+3.-MySQL: sistema de gestiÃ³n de base de datos que permitirÃ¡ almacenar la informaciÃ³n de ventas, clientes y pedidos de forma segura. 
+4.-Git y GitHub: utilizados como sistema de control de versiones para coordinar el trabajo del equipo y mantener respaldo del cÃ³digo. 
+5.-Visual Studio Code: editor de cÃ³digo utilizado por el equipo para el desarrollo del software. 
+Todos estos recursos son de uso gratuito o cuentan con versiones libres, por lo que no generan costos para el proyecto.
+Hardware: 
+El desarrollo del sistema se realizarÃ¡ utilizando los equipos personales de los integrantes del grupo, los cuales cuentan con las capacidades necesarias para programar, ejecutar y probar la aplicaciÃ³n.
+1.-Computadores personales (notebooks o PCs) para el desarrollo del sistema. 
+2.-TelÃ©fonos mÃ³viles para pruebas de la aplicaciÃ³n en entorno real (Android y, si es posible, iOS).
+Costos estimados:
+Dado que se utilizarÃ¡n herramientas gratuitas y equipos propios, el costo econÃ³mico del proyecto es prÃ¡cticamente nulo. El principal recurso invertido corresponde al tiempo de trabajo del equipo, el cual se enmarca en el contexto acadÃ©mico.
+Especificaciones mÃ­nimas para el funcionamiento de la aplicaciÃ³n en el dispositivo:
+Para el correcto y garantizado funcionamiento de la aplicaciÃ³n se necesitarÃ¡ como mÃ­nimo:
+Procesador: Quad-core 1.8 GHz (Snapdragon serie 400 o equivalente Mediatek).
+Memoria RAM: 3 GB.
+Pantalla: 5.5 pulgadas.
+Conectividad: 4G/LTE estable o Wi-Fi de 2.4 GHz.
+Sistema Operativo: Android 9.0 o superior / iOS 13+.
+11.-Analisis de riesgo
+Durante el desarrollo del sistema se identificaron algunos riesgos principales que podrÃ­an afectar el proyecto, tanto a nivel tÃ©cnico como en la experiencia de uso. A continuaciÃ³n, se presentan los mÃ¡s relevantes junto con sus medidas de mitigaciÃ³n.
+1.-Problemas de usabilidad del sistema
+Existe el riesgo de que la aplicaciÃ³n no sea lo suficientemente clara o fÃ¡cil de usar para los dueÃ±os de la amasanderÃ­a, considerando que no estÃ¡n acostumbrados a sistemas digitales. Esto podrÃ­a generar rechazo o mal uso de la herramienta.
+Probabilidad: Media 
+Impacto: Alto 
+MitigaciÃ³n: Se priorizarÃ¡ un diseÃ±o simple e intuitivo, con funciones claras y botones visibles. AdemÃ¡s, en cada Sprint se realizarÃ¡n pruebas de uso y se ajustarÃ¡ la interfaz segÃºn el feedback obtenido.
+2.-Errores en el sistema y falta de pruebas
+Durante el desarrollo pueden aparecer errores en funcionalidades clave, como el registro de ventas o la gestiÃ³n de pedidos. Si no se detectan a tiempo, podrÃ­an afectar el funcionamiento final del sistema.
+Probabilidad: Alta 
+Impacto: Alto 
+MitigaciÃ³n: El testeo serÃ¡ parte de cada Sprint, evitando dejar todas las pruebas para el final. De esta forma, los errores se detectan y corrigen de manera temprana
+3.-Retrasos en el desarrollo o cambios en los requerimientos 
+Durante el desarrollo pueden aparecer errores en funcionalidades clave, como el registro de ventas o la gestiÃ³n de pedidos. Si no se detectan a tiempo, podrÃ­an afectar el funcionamiento final del sistema.
+Probabilidad: Alta 
+Impacto: Alto 
+MitigaciÃ³n: El testeo serÃ¡ parte de cada Sprint, evitando dejar todas las pruebas para el final. De esta forma, los errores se detectan y corrigen de manera temprana
+12. OrganizaciÃ³n del Grupo Proyecto
+Para armar este software, nos organizamos en un equipo de trabajo donde cada uno tiene una tarea clara segÃºn lo que mejor sabe hacer. La idea es apoyarnos entre todos para que el programa cumpla con lo que necesita la amasanderÃ­a.
+DescripciÃ³n de roles y responsabilidades
+Analista de Datos: Es el encargado de entender cÃ³mo trabaja la amasanderÃ­a hoy en dÃ­a para pasar los datos del papel al sistema. Su tarea es ordenar cÃ³mo se va a guardar la informaciÃ³n de las ventas y los pedidos de los vecinos, para que despuÃ©s sea fÃ¡cil encontrar todo y no se pierda nada.
+Desarrolladores: Son los que se meten en el cÃ³digo para construir la aplicaciÃ³n. Su responsabilidad es crear una pantalla que sea simple de usar en el celular y programar las funciones para que el negocio pueda sacar la cuenta de las ventas y ver el estado de los encargos al momento.
+Tester: Es el que revisa que todo funcione bien y que no tenga fallos. Se encarga de probar el programa muchas veces antes de entregarlo, asegurÃ¡ndose de que los botones respondan como corresponde y que sea fÃ¡cil de entender para los dueÃ±os, aunque no estÃ©n acostumbrados a usar tecnologÃ­a.
+DistribuciÃ³n del trabajo
+Todas las tareas, quiÃ©n hace quÃ© y las fechas de entrega, las dejamos bien detalladas en la Carta Gantt (Punto 9). AhÃ­ se puede ver el orden en que vamos a ir armando cada parte del software.
+13.- Consecuencias del Sistema de InformaciÃ³n 
+La implementaciÃ³n de este software traerÃ¡ cambios muy positivos para la amasanderÃ­a, principalmente porque dejarÃ¡n de depender de cuadernos que se pueden perder o mojar. El mayor beneficio es el orden y la seguridad de la informaciÃ³n; ahora, al tener todo en el celular, los dueÃ±os sabrÃ¡n exactamente quÃ© pedidos tienen para el dÃ­a sin miedo a olvidar ninguno. 
+En cuanto a la eficiencia, el negocio va a ganar mucho tiempo. Ya no tendrÃ¡n que estar sumando hojas a mano al final del dÃ­a para saber cuÃ¡nto vendieron, porque el sistema le darÃ¡ el total al instante. Esto mejora la productividad, ya que pueden dedicar ese tiempo a cocinar o atender mejor a los vecinos. AdemÃ¡s, al ser mÃ¡s organizados con los encargos, el negocio se vuelve mÃ¡s competitivo frente a otras panaderÃ­as, ya que los clientes verÃ¡n un servicio mÃ¡s moderno, rÃ¡pido y profesional, lo que ayuda a que el emprendimiento familiar crezca con una base sÃ³lida.
+
