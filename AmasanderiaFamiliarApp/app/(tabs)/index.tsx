@@ -26,7 +26,7 @@ export default function HomeScreen() {
       try {
         const db = await setupDatabase();
         // Insertamos los datos solo si no existen para evitar errores de Foreign Key
-        const productosCount = await db.getAllAsync('SELECT COUNT(*) as count FROM productos') as {count: number}[];
+        const productosCount = await db.getAllAsync('SELECT COUNT(*) as count FROM productos') as { count: number }[];
         if (productosCount[0].count === 0) {
           await db.execAsync(`
             INSERT INTO productos (nombre, precio_unitario) VALUES
@@ -74,8 +74,7 @@ export default function HomeScreen() {
       subtitle: "Preparaciones",
       icon: "book-outline",
       color: "#FBBF24", // Amarillo cálido
-      action: () =>
-        Alert.alert("Recetas", "Funcionalidad pendiente - Navegar a recetas"),
+      action: () => router.push("/(tabs)/recetas"),
     },
   ];
 
@@ -96,15 +95,12 @@ export default function HomeScreen() {
             accessibilityLabel="Ir a Productos"
           >
             {/* @ts-ignore - Tipado de Ionicons */}
-            <Ionicons name="cube-outline" size={18} color={theme.tint} style={styles.smallButtonIcon} />
+            <Ionicons name="cube-outline" size={20} color={theme.tint} style={styles.smallButtonIcon} />
             <Text style={[styles.smallButtonText, { color: theme.tint }]}>Productos</Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.header}>
-          <Text style={styles.greeting} accessibilityRole="header">
-            ¡Hola! 👋
-          </Text>
           <Text style={[styles.title, { color: theme.text }]}>Amasandería Familiar</Text>
           <Text style={[styles.subtitle, { color: theme.text }]}>¿Qué haremos hoy?</Text>
         </View>
@@ -189,8 +185,8 @@ const styles = StyleSheet.create({
   smallButton: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingHorizontal: 30,
+    paddingVertical: 18,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: "#D1D5DB",
@@ -204,7 +200,7 @@ const styles = StyleSheet.create({
   },
   header: {
     marginBottom: 24,
-    marginTop: 8,
+    marginTop: 50,
     alignItems: "center",
   },
   greeting: {
@@ -242,6 +238,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 22,
     padding: 24,
+    alignItems: "center",
     // Sombras modernas y sutiles
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
@@ -269,10 +266,12 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#1F2937",
     marginBottom: 6,
+    textAlign: "center",
   },
   cardSubtitle: {
     fontSize: 14,
     fontWeight: "500",
     color: "#6B7280",
+    textAlign: "center",
   },
 });

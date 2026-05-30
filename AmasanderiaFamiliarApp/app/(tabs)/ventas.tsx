@@ -6,12 +6,13 @@ import {
   TouchableOpacity,
   FlatList,
   ActivityIndicator,
-  SafeAreaView,
   Platform,
   RefreshControl,
   Modal,
   Alert,
+  TouchableWithoutFeedback,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { setupDatabase } from '../../database';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -217,19 +218,71 @@ export default function VentasScreen() {
     </View>
   );
 
+  const renderPaginacion = (isHeader: boolean) => {
+    if (totalGrupos <= 0) return null;
+    return (
+      <View style={[styles.paginacion, { 
+        borderTopWidth: isHeader ? 0 : 1,
+        borderBottomWidth: isHeader ? 1 : 0,
+        borderTopColor: isHeader ? 'transparent' : theme.border,
+        borderBottomColor: isHeader ? theme.border : 'transparent',
+        marginBottom: isHeader ? 16 : 0,
+        marginTop: isHeader ? 0 : 4,
+      }]}>
+        <TouchableOpacity
+          style={[styles.paginaBtn, { backgroundColor: theme.card, borderColor: theme.border }, paginaActual === 1 && styles.paginaBtnDisabled]}
+          onPress={() => irAPagina(paginaActual - 1)}
+          disabled={paginaActual === 1}
+        >
+          <Ionicons name="chevron-back" size={20} color={paginaActual === 1 ? theme.border : theme.tint} />
+        </TouchableOpacity>
+
+        <View style={[styles.paginaInfo, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <Text style={[styles.paginaTexto, { color: theme.text }]}>
+            Página <Text style={{ color: theme.tint, fontWeight: '800' }}>{paginaActual}</Text> de <Text style={{ fontWeight: '700' }}>{totalPaginas}</Text>
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          style={[styles.paginaBtn, { backgroundColor: theme.card, borderColor: theme.border }, paginaActual === totalPaginas && styles.paginaBtnDisabled]}
+          onPress={() => irAPagina(paginaActual + 1)}
+          disabled={paginaActual === totalPaginas}
+        >
+          <Ionicons name="chevron-forward" size={20} color={paginaActual === totalPaginas ? theme.border : theme.tint} />
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
       <View style={styles.container}>
-        {/* Cabecera */}
+        {/* Cabecera + botón Nueva Venta */}
         <View style={styles.header}>
-          <Text style={[styles.title, { color: theme.text }]} accessibilityRole="header">
-            Historial de Ventas
-          </Text>
-          <Text style={[styles.subtitle, { color: theme.icon }]}>
-            {totalGrupos > 0
-              ? `${totalGrupos} registro${totalGrupos !== 1 ? 's' : ''} en total`
-              : 'Supervisa los ingresos'}
-          </Text>
+          {/* Botón Nueva Venta — encima del título */}
+          <TouchableOpacity
+            style={[styles.nuevaVentaBtn, { backgroundColor: theme.tint }]}
+            onPress={() => router.push('/venta-modal')}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Registrar nueva venta"
+          >
+            <Ionicons name="add-circle" size={48} color="#FFF" />
+            <Text style={styles.nuevaVentaBtnText}>Nueva Venta</Text>
+          </TouchableOpacity>
+
+          <View style={styles.headerTop}>
+            <View>
+              <Text style={[styles.title, { color: theme.text }]} accessibilityRole="header">
+                Historial de Ventas
+              </Text>
+              <Text style={[styles.subtitle, { color: theme.icon }]}>
+                {totalGrupos > 0
+                  ? `${totalGrupos} registro${totalGrupos !== 1 ? 's' : ''} en total`
+                  : 'Supervisa los ingresos'}
+              </Text>
+            </View>
+          </View>
         </View>
 
         {/* Lista */}
@@ -254,33 +307,8 @@ export default function VentasScreen() {
                 tintColor={theme.tint}
               />
             }
-            ListFooterComponent={
-              totalGrupos > 0 ? (
-                <View style={[styles.paginacion, { borderTopColor: theme.border }]}>
-                  <TouchableOpacity
-                    style={[styles.paginaBtn, { backgroundColor: theme.card, borderColor: theme.border }, paginaActual === 1 && styles.paginaBtnDisabled]}
-                    onPress={() => irAPagina(paginaActual - 1)}
-                    disabled={paginaActual === 1}
-                  >
-                    <Ionicons name="chevron-back" size={20} color={paginaActual === 1 ? theme.border : theme.tint} />
-                  </TouchableOpacity>
-
-                  <View style={[styles.paginaInfo, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                    <Text style={[styles.paginaTexto, { color: theme.text }]}>
-                      Página <Text style={{ color: theme.tint, fontWeight: '800' }}>{paginaActual}</Text> de <Text style={{ fontWeight: '700' }}>{totalPaginas}</Text>
-                    </Text>
-                  </View>
-
-                  <TouchableOpacity
-                    style={[styles.paginaBtn, { backgroundColor: theme.card, borderColor: theme.border }, paginaActual === totalPaginas && styles.paginaBtnDisabled]}
-                    onPress={() => irAPagina(paginaActual + 1)}
-                    disabled={paginaActual === totalPaginas}
-                  >
-                    <Ionicons name="chevron-forward" size={20} color={paginaActual === totalPaginas ? theme.border : theme.tint} />
-                  </TouchableOpacity>
-                </View>
-              ) : null
-            }
+            ListHeaderComponent={renderPaginacion(true)}
+            ListFooterComponent={renderPaginacion(false)}
             renderItem={({ item }) => {
               const esGrupo = item.num_items > 1;
               const esEncargo = !!item.es_encargo;
@@ -344,19 +372,7 @@ export default function VentasScreen() {
         )}
       </View>
 
-      {/* Botón grande de Nueva Venta */}
-      <View style={[styles.footerBar, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
-        <TouchableOpacity
-          style={[styles.nuevaVentaBtn, { backgroundColor: theme.tint }]}
-          onPress={() => router.push('/venta-modal')}
-          activeOpacity={0.85}
-          accessibilityRole="button"
-          accessibilityLabel="Registrar nueva venta"
-        >
-          <Ionicons name="add-circle" size={32} color="#FFF" />
-          <Text style={styles.nuevaVentaBtnText}>Nueva Venta</Text>
-        </TouchableOpacity>
-      </View>
+
 
       {/* ======== MODAL DETALLE DE VENTA GRUPAL ======== */}
       <Modal
@@ -365,8 +381,10 @@ export default function VentasScreen() {
         transparent={true}
         onRequestClose={() => setDetalleVisible(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+        <TouchableWithoutFeedback onPress={() => setDetalleVisible(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
             {/* Header modal */}
             <View style={styles.modalHeader}>
               <View style={styles.dragIndicatorContainer}>
@@ -417,8 +435,10 @@ export default function VentasScreen() {
                 </View>
               }
             />
+              </View>
+            </TouchableWithoutFeedback>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
     </SafeAreaView>
   );
@@ -433,6 +453,13 @@ const styles = StyleSheet.create({
   },
   centerAll: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: { marginBottom: 20 },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginTop: 28,
+    marginBottom: 16,
+  },
   title: { fontSize: 32, fontWeight: '800', letterSpacing: -0.5, marginBottom: 4 },
   subtitle: { fontSize: 16, fontWeight: '400' },
   listContainer: { paddingBottom: 8 },
@@ -491,18 +518,11 @@ const styles = StyleSheet.create({
   },
   paginaTexto: { fontSize: 15, fontWeight: '600' },
 
-  /* Footer */
-  footerBar: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: Platform.OS === 'ios' ? 8 : 12,
-    borderTopWidth: 1,
-  },
   nuevaVentaBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 12, paddingVertical: 20, borderRadius: 20,
-    shadowColor: '#2563EB', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35, shadowRadius: 10, elevation: 6,
+    gap: 14, paddingVertical: 18, borderRadius: 18,
+    shadowColor: '#2563EB', shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4, shadowRadius: 14, elevation: 8,
   },
   nuevaVentaBtnText: { color: '#FFF', fontSize: 22, fontWeight: '800', letterSpacing: 0.3 },
 

@@ -55,6 +55,13 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <MaterialIcons size={32} name="event-note" color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="recetas"
+        options={{
+          title: 'Recetas',
+          tabBarIcon: ({ color }) => <MaterialIcons size={32} name="menu-book" color={color} />,
+        }}
+      />
     </Tabs>
   );
 }

@@ -140,6 +140,24 @@ export default function EncargosScreen() {
     });
   };
 
+  const eliminarDelCarrito = (producto: Producto) => {
+    Alert.alert(
+      "Quitar del carrito",
+      `¿Eliminar todas las unidades de "${producto.nombre}"?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: () =>
+            setCarrito((prev) =>
+              prev.filter((item) => item.producto.id_producto !== producto.id_producto)
+            ),
+        },
+      ]
+    );
+  };
+
   const cantidadEnCarrito = (id: number) => {
     return carrito.find((item) => item.producto.id_producto === id)?.cantidad ?? 0;
   };
@@ -440,7 +458,7 @@ export default function EncargosScreen() {
           onPress={abrirModal}
           activeOpacity={0.85}
         >
-          <Ionicons name="add-circle" size={30} color="#FFF" />
+          <Ionicons name="add-circle" size={48} color="#FFF" />
           <Text style={styles.nuevoBtnText}>Nuevo Pedido</Text>
         </TouchableOpacity>
       </View>
@@ -474,7 +492,7 @@ export default function EncargosScreen() {
                       const qty = cantidadEnCarrito(item.id_producto);
                       const enCarrito = qty > 0;
                       return (
-                        <TouchableOpacity
+                        <View
                           style={[
                             styles.botonProducto,
                             {
@@ -482,11 +500,17 @@ export default function EncargosScreen() {
                               borderColor: enCarrito ? theme.tint : theme.border,
                             },
                           ]}
-                          onPress={() => agregarAlCarrito(item)}
-                          activeOpacity={0.75}
                         >
-                          {/* Nombre y precio */}
-                          <View style={styles.productoInfo}>
+                          {/* Mitad izquierda — baja cantidad (o agrega si no está en carrito) */}
+                          <TouchableOpacity
+                            style={styles.mitadIzquierda}
+                            onPress={() =>
+                              enCarrito ? quitarDelCarrito(item.id_producto) : agregarAlCarrito(item)
+                            }
+                            onLongPress={() => enCarrito && eliminarDelCarrito(item)}
+                            delayLongPress={500}
+                            activeOpacity={0.6}
+                          >
                             <Text
                               style={[
                                 styles.productoNombre,
@@ -503,37 +527,51 @@ export default function EncargosScreen() {
                             >
                               ${item.precio_unitario.toLocaleString()}
                             </Text>
-                          </View>
-
-                          {/* Badge de cantidad + botón quitar */}
-                          <View style={styles.productoAcciones}>
                             {enCarrito && (
+                              <Text style={styles.hintText}>mantén para vaciar</Text>
+                            )}
+                          </TouchableOpacity>
+
+                          {/* Divisor visual sutil cuando está en carrito */}
+                          {enCarrito && (
+                            <View style={styles.divisor} />
+                          )}
+
+                          {/* Mitad derecha — controles: − | cantidad | + */}
+                          <View style={styles.mitadDerecha}>
+                            {enCarrito ? (
+                              <View style={styles.controlesCarrito}>
+                                <TouchableOpacity
+                                  style={styles.ctrlBtn}
+                                  onPress={() => quitarDelCarrito(item.id_producto)}
+                                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                >
+                                  <Ionicons name="remove-circle" size={30} color="rgba(255,255,255,0.85)" />
+                                </TouchableOpacity>
+
+                                <View style={[styles.badge, { backgroundColor: "rgba(255,255,255,0.25)" }]}>
+                                  <Text style={[styles.badgeText, { color: "#FFF" }]}>{qty}</Text>
+                                </View>
+
+                                <TouchableOpacity
+                                  style={styles.ctrlBtn}
+                                  onPress={() => agregarAlCarrito(item)}
+                                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                >
+                                  <Ionicons name="add-circle" size={30} color="rgba(255,255,255,0.85)" />
+                                </TouchableOpacity>
+                              </View>
+                            ) : (
                               <TouchableOpacity
-                                style={styles.quitarBtn}
-                                onPress={() => quitarDelCarrito(item.id_producto)}
-                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                style={[styles.badge, { backgroundColor: `${theme.tint}18` }]}
+                                onPress={() => agregarAlCarrito(item)}
+                                activeOpacity={0.7}
                               >
-                                <Ionicons name="remove-circle" size={28} color="rgba(255,255,255,0.8)" />
+                                <Ionicons name="add" size={22} color={theme.tint} />
                               </TouchableOpacity>
                             )}
-                            <View
-                              style={[
-                                styles.badge,
-                                {
-                                  backgroundColor: enCarrito
-                                    ? "rgba(255,255,255,0.25)"
-                                    : `${theme.tint}18`,
-                                },
-                              ]}
-                            >
-                              {enCarrito ? (
-                                <Text style={[styles.badgeText, { color: "#FFF" }]}>{qty}</Text>
-                              ) : (
-                                <Ionicons name="add" size={22} color={theme.tint} />
-                              )}
-                            </View>
                           </View>
-                        </TouchableOpacity>
+                        </View>
                       );
                     }}
                   />
@@ -774,16 +812,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
+    gap: 14,
     paddingVertical: 18,
     borderRadius: 18,
     shadowColor: '#2563EB',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 14,
+    elevation: 8,
   },
-  nuevoBtnText: { color: '#FFF', fontSize: 20, fontWeight: '800' },
+  nuevoBtnText: { color: '#FFF', fontSize: 22, fontWeight: '800', letterSpacing: 0.3 },
 
   /* --- MODAL Y PASOS --- */
   listaProductos: {
@@ -793,42 +831,65 @@ const styles = StyleSheet.create({
   },
   botonProducto: {
     flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 18,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    marginBottom: 12,
+    borderRadius: 22,
+    borderWidth: 2,
+    marginBottom: 16,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 3,
   },
-  productoInfo: {
+  mitadIzquierda: {
     flex: 1,
+    paddingVertical: 22,
+    paddingHorizontal: 20,
+    justifyContent: "center",
+  },
+  mitadDerecha: {
+    paddingVertical: 22,
+    paddingHorizontal: 18,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  divisor: {
+    width: 1,
+    marginVertical: 12,
+    backgroundColor: "rgba(255,255,255,0.25)",
   },
   productoNombre: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "700",
     marginBottom: 4,
   },
   productoPrecio: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "700",
   },
-  productoAcciones: {
+  hintText: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.5)",
+    marginTop: 6,
+    fontWeight: "500",
+  },
+  controlesCarrito: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
   },
-  quitarBtn: {
+  ctrlBtn: {
     padding: 2,
   },
   badge: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     justifyContent: "center",
     alignItems: "center",
   },
   badgeText: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "800",
   },
   totalLabel: {
