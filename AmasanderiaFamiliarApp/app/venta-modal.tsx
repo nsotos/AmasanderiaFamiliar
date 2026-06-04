@@ -3,20 +3,18 @@ import {
   Alert,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
   FlatList,
-  Modal,
   ActivityIndicator,
-  KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-
+import { Ionicons } from "@expo/vector-icons";
 import { setupDatabase } from "../database";
-import { ThemedText } from "@/components/themed-text";
-import { ThemedView } from "@/components/themed-view";
+import { Colors } from "@/constants/theme";
+import { useColorScheme } from "@/hooks/use-color-scheme";
 
 interface Producto {
   id_producto: number;
@@ -24,17 +22,24 @@ interface Producto {
   precio_unitario: number;
 }
 
+interface ItemCarrito {
+  producto: Producto;
+  cantidad: number;
+  subtotal: number;
+}
+
 export default function VentaModalScreen() {
   const router = useRouter();
+  const colorScheme = useColorScheme() ?? "light";
+  const theme = Colors[colorScheme];
 
   const [productos, setProductos] = useState<Producto[]>([]);
-  const [productoSeleccionado, setProductoSeleccionado] =
-    useState<Producto | null>(null);
-  const [cantidad, setCantidad] = useState("");
-  const [total, setTotal] = useState("");
+  const [carrito, setCarrito] = useState<ItemCarrito[]>([]);
   const [guardando, setGuardando] = useState(false);
   const [cargando, setCargando] = useState(true);
-  const [mostrarSelector, setMostrarSelector] = useState(false);
+
+  const totalCarrito = carrito.reduce((sum, item) => sum + item.subtotal, 0);
+  const totalUnidades = carrito.reduce((sum, item) => sum + item.cantidad, 0);
 
   useEffect(() => {
     const cargarProductos = async () => {
@@ -52,65 +57,92 @@ export default function VentaModalScreen() {
     cargarProductos();
   }, []);
 
-  useEffect(() => {
-    if (productoSeleccionado && cantidad) {
-      const cant = parseFloat(cantidad);
-      if (!isNaN(cant)) {
-        const totalCalculado = cant * productoSeleccionado.precio_unitario;
-        setTotal(totalCalculado.toString());
-      } else {
-        setTotal("");
+  // Toca un producto → agrega 1 unidad al carrito
+  const agregarAlCarrito = (producto: Producto) => {
+    setCarrito((prev) => {
+      const existe = prev.find(
+        (item) => item.producto.id_producto === producto.id_producto
+      );
+      if (existe) {
+        return prev.map((item) =>
+          item.producto.id_producto === producto.id_producto
+            ? {
+                ...item,
+                cantidad: item.cantidad + 1,
+                subtotal: (item.cantidad + 1) * item.producto.precio_unitario,
+              }
+            : item
+        );
       }
-    } else {
-      setTotal("");
-    }
-  }, [cantidad, productoSeleccionado]);
-
-  // Funciones para sumar y restar cantidad
-  const sumarCantidad = () => {
-    const cantActual = parseFloat(cantidad || "0");
-    if (!isNaN(cantActual)) {
-      setCantidad((cantActual + 1).toString());
-    }
+      return [
+        ...prev,
+        { producto, cantidad: 1, subtotal: producto.precio_unitario },
+      ];
+    });
   };
 
-  const restarCantidad = () => {
-    const cantActual = parseFloat(cantidad || "0");
-    if (!isNaN(cantActual) && cantActual > 1) {
-      setCantidad((cantActual - 1).toString());
-    } else {
-      setCantidad("0"); // Evita números negativos
-    }
+  const quitarDelCarrito = (id: number) => {
+    setCarrito((prev) => {
+      return prev
+        .map((item) => {
+          if (item.producto.id_producto === id) {
+            const nuevaCantidad = item.cantidad - 1;
+            if (nuevaCantidad <= 0) return null;
+            return {
+              ...item,
+              cantidad: nuevaCantidad,
+              subtotal: nuevaCantidad * item.producto.precio_unitario,
+            };
+          }
+          return item;
+        })
+        .filter(Boolean) as ItemCarrito[];
+    });
   };
 
-  const handleGuardar = async () => {
-    if (!productoSeleccionado) {
-      Alert.alert("Validación", "Selecciona un producto.");
+  const eliminarDelCarrito = (producto: Producto) => {
+    Alert.alert(
+      "Quitar del carrito",
+      `¿Eliminar todas las unidades de "${producto.nombre}"?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: () =>
+            setCarrito((prev) =>
+              prev.filter((item) => item.producto.id_producto !== producto.id_producto)
+            ),
+        },
+      ]
+    );
+  };
+
+  const cantidadEnCarrito = (id: number) => {
+    return carrito.find((item) => item.producto.id_producto === id)?.cantidad ?? 0;
+  };
+
+  const handleConfirmar = async () => {
+    if (carrito.length === 0) {
+      Alert.alert("Carrito vacío", "Agrega al menos un producto.");
       return;
     }
-
-    const cant = parseFloat(cantidad);
-    const tot = parseFloat(total);
-
-    if (isNaN(cant) || cant <= 0) {
-      Alert.alert("Validación", "Ingresa una cantidad válida mayor a 0.");
-      return;
-    }
-
-    if (isNaN(tot) || tot <= 0) {
-      Alert.alert("Validación", "El total debe ser mayor a 0.");
-      return;
-    }
-
     setGuardando(true);
     try {
       const db = await setupDatabase();
-      await db.runAsync(
-        "INSERT INTO ventas (id_producto, cantidad, total_venta) VALUES (?, ?, ?)",
-        [productoSeleccionado.id_producto, cant, tot],
+      // Generar grupo si hay 2 o más ítems distintos en el carrito
+      const grupoVenta = carrito.length >= 2 ? `grupo_${Date.now()}` : null;
+      for (const item of carrito) {
+        await db.runAsync(
+          "INSERT INTO ventas (id_producto, cantidad, total_venta, grupo_venta) VALUES (?, ?, ?, ?)",
+          [item.producto.id_producto, item.cantidad, item.subtotal, grupoVenta]
+        );
+      }
+      Alert.alert(
+        "¡Venta registrada!",
+        `${totalUnidades} unidad(es) — Total: $${totalCarrito.toLocaleString()}`,
+        [{ text: "OK", onPress: () => router.back() }]
       );
-      Alert.alert("Éxito", "Venta registrada correctamente.");
-      router.back();
     } catch (error) {
       console.error(error);
       Alert.alert("Error", "No se pudo guardar la venta.");
@@ -121,418 +153,330 @@ export default function VentaModalScreen() {
 
   if (cargando) {
     return (
-      <ThemedView style={[styles.container, styles.centerAll]}>
-        <ActivityIndicator size="large" color="#10B981" />
-      </ThemedView>
+      <View style={[styles.container, styles.centerAll, { backgroundColor: theme.background }]}>
+        <ActivityIndicator size="large" color={theme.tint} />
+      </View>
     );
   }
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
-      <ThemedView style={styles.container}>
-        <View style={styles.header}>
-          <ThemedText type="title" style={styles.title}>
-            Nueva Venta
-          </ThemedText>
-          <ThemedText style={styles.description}>
-            Selecciona un producto, ingresa la cantidad y confirma.
-          </ThemedText>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
+      {/* Cabecera */}
+      <View style={styles.header}>
+        <View>
+          <Text style={[styles.title, { color: theme.text }]}>Nueva Venta</Text>
+          <Text style={[styles.subtitle, { color: theme.icon }]}>
+            Toca un producto para agregarlo
+          </Text>
         </View>
+        <TouchableOpacity
+          style={[styles.cancelBtn, { backgroundColor: theme.card, borderColor: theme.border }]}
+          onPress={() => router.back()}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="close" size={22} color={theme.icon} />
+        </TouchableOpacity>
+      </View>
 
-        <View style={styles.form}>
-          {/* Selector de Producto */}
-          <Text style={styles.label}>Producto</Text>
-          <TouchableOpacity
-            style={styles.inputContainer}
-            activeOpacity={0.7}
-            onPress={() => setMostrarSelector(true)}
-          >
-            <Text
-              style={[
-                styles.inputText,
-                !productoSeleccionado && styles.placeholderText,
-              ]}
-            >
-              {productoSeleccionado
-                ? productoSeleccionado.nombre
-                : "Selecciona un producto..."}
+      {/* Lista de productos — botones grandes */}
+      <FlatList
+        data={productos}
+        keyExtractor={(item) => item.id_producto.toString()}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.listaProductos}
+        ListEmptyComponent={
+          <View style={styles.centerAll}>
+            <Ionicons name="cube-outline" size={60} color={theme.border} />
+            <Text style={[styles.emptyText, { color: theme.icon }]}>
+              No hay productos registrados
             </Text>
-            <Text style={styles.chevron}>▼</Text>
-          </TouchableOpacity>
-
-          {/* Modal Selector */}
-          <Modal
-            visible={mostrarSelector}
-            animationType="slide"
-            transparent={true}
-            onRequestClose={() => setMostrarSelector(false)}
-          >
-            <View style={styles.modalOverlay}>
-              <View style={styles.modalContent}>
-                <View style={styles.dragIndicatorContainer}>
-                  <View style={styles.dragIndicator} />
-                </View>
-
-                <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>Seleccionar Producto</Text>
-                  <TouchableOpacity
-                    onPress={() => setMostrarSelector(false)}
-                    style={styles.closeButtonContainer}
-                  >
-                    <Text style={styles.closeButton}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <FlatList
-                  data={productos}
-                  keyExtractor={(item) => item.id_producto.toString()}
-                  showsVerticalScrollIndicator={false}
-                  contentContainerStyle={styles.listContainer}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={[
-                        styles.productOption,
-                        productoSeleccionado?.id_producto ===
-                          item.id_producto && styles.productOptionSelected,
-                      ]}
-                      activeOpacity={0.7}
-                      onPress={() => {
-                        setProductoSeleccionado(item);
-                        setMostrarSelector(false);
-                      }}
-                    >
-                      <View>
-                        <Text style={styles.productOptionName}>
-                          {item.nombre}
-                        </Text>
-                        <Text style={styles.productOptionPrice}>
-                          ${item.precio_unitario}
-                        </Text>
-                      </View>
-                      {productoSeleccionado?.id_producto ===
-                        item.id_producto && (
-                        <Text style={styles.checkmark}>✓</Text>
-                      )}
-                    </TouchableOpacity>
-                  )}
-                />
-              </View>
-            </View>
-          </Modal>
-
-          {/* Cantidad y Total */}
-          <View style={styles.row}>
-            {/* Campo Cantidad con Botones + y - */}
-            <View style={styles.halfWidth}>
-              <Text style={styles.label}>Cantidad</Text>
-              <View style={[styles.inputContainer, styles.quantityContainer]}>
-                <TouchableOpacity
-                  style={styles.qtyButton}
-                  onPress={restarCantidad}
-                  activeOpacity={0.6}
-                >
-                  <Text style={styles.qtyButtonText}>−</Text>
-                </TouchableOpacity>
-
-                <TextInput
-                  style={[styles.textInput, styles.qtyInput]}
-                  value={cantidad}
-                  onChangeText={setCantidad}
-                  placeholder="0"
-                  placeholderTextColor="#9CA3AF"
-                  keyboardType="decimal-pad"
-                  textAlign="center"
-                />
-
-                <TouchableOpacity
-                  style={styles.qtyButton}
-                  onPress={sumarCantidad}
-                  activeOpacity={0.6}
-                >
-                  <Text style={styles.qtyButtonText}>+</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <View style={styles.halfWidth}>
-              <Text style={styles.label}>Total ($)</Text>
-              <View style={styles.inputContainer}>
-                <TextInput
-                  style={[styles.textInput, styles.totalInput]}
-                  value={total}
-                  onChangeText={setTotal}
-                  placeholder="0.00"
-                  placeholderTextColor="#9CA3AF"
-                  keyboardType="decimal-pad"
-                  editable={false}
-                />
-              </View>
-            </View>
           </View>
-
-          {/* Botones Guardar/Cancelar */}
-          <View style={styles.footer}>
-            <TouchableOpacity
+        }
+        renderItem={({ item }) => {
+          const qty = cantidadEnCarrito(item.id_producto);
+          const enCarrito = qty > 0;
+          return (
+            <View
               style={[
-                styles.saveButton,
-                guardando && styles.saveButtonDisabled,
+                styles.botonProducto,
+                {
+                  backgroundColor: enCarrito ? theme.tint : theme.card,
+                  borderColor: enCarrito ? theme.tint : theme.border,
+                },
               ]}
-              onPress={handleGuardar}
-              disabled={guardando}
-              activeOpacity={0.8}
             >
-              <Text style={styles.saveButtonText}>
-                {guardando ? "Guardando..." : "Registrar Venta"}
-              </Text>
-            </TouchableOpacity>
+              {/* Mitad izquierda — baja cantidad (o agrega si no está en carrito) */}
+              <TouchableOpacity
+                style={styles.mitadIzquierda}
+                onPress={() =>
+                  enCarrito ? quitarDelCarrito(item.id_producto) : agregarAlCarrito(item)
+                }
+                onLongPress={() => enCarrito && eliminarDelCarrito(item)}
+                delayLongPress={500}
+                activeOpacity={0.6}
+              >
+                <Text
+                  style={[
+                    styles.productoNombre,
+                    { color: enCarrito ? "#FFF" : theme.text },
+                  ]}
+                >
+                  {item.nombre}
+                </Text>
+                <Text
+                  style={[
+                    styles.productoPrecio,
+                    { color: enCarrito ? "rgba(255,255,255,0.85)" : theme.tint },
+                  ]}
+                >
+                  ${item.precio_unitario.toLocaleString()}
+                </Text>
+                {enCarrito && (
+                  <Text style={styles.hintText}>mantén para vaciar</Text>
+                )}
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={() => router.back()}
-              activeOpacity={0.6}
-            >
-              <Text style={styles.cancelButtonText}>Cancelar</Text>
-            </TouchableOpacity>
+              {/* Divisor visual sutil cuando está en carrito */}
+              {enCarrito && (
+                <View style={styles.divisor} />
+              )}
+
+              {/* Mitad derecha — controles: − | cantidad | + */}
+              <View style={styles.mitadDerecha}>
+                {enCarrito ? (
+                  <View style={styles.controlesCarrito}>
+                    <TouchableOpacity
+                      style={styles.ctrlBtn}
+                      onPress={() => quitarDelCarrito(item.id_producto)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="remove-circle" size={30} color="rgba(255,255,255,0.85)" />
+                    </TouchableOpacity>
+
+                    <View style={[styles.badge, { backgroundColor: "rgba(255,255,255,0.25)" }]}>
+                      <Text style={[styles.badgeText, { color: "#FFF" }]}>{qty}</Text>
+                    </View>
+
+                    <TouchableOpacity
+                      style={styles.ctrlBtn}
+                      onPress={() => agregarAlCarrito(item)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="add-circle" size={30} color="rgba(255,255,255,0.85)" />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={[styles.badge, { backgroundColor: `${theme.tint}18` }]}
+                    onPress={() => agregarAlCarrito(item)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="add" size={22} color={theme.tint} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          );
+        }}
+      />
+
+      {/* Footer con carrito y botón confirmar */}
+      <View
+        style={[
+          styles.footer,
+          { backgroundColor: theme.card, borderTopColor: theme.border },
+        ]}
+      >
+        <View style={styles.totalRow}>
+          <View>
+            <Text style={[styles.totalLabel, { color: theme.icon }]}>
+              {totalUnidades} ítem{totalUnidades !== 1 ? "s" : ""} en el carrito
+            </Text>
+            <Text style={[styles.totalValue, { color: theme.tint }]}>
+              ${totalCarrito.toLocaleString()}
+            </Text>
           </View>
+
+          <TouchableOpacity
+            style={[
+              styles.confirmarBtn,
+              { backgroundColor: theme.tint },
+              (guardando || carrito.length === 0) && styles.confirmarBtnDisabled,
+            ]}
+            onPress={handleConfirmar}
+            disabled={guardando || carrito.length === 0}
+            activeOpacity={0.85}
+          >
+            {guardando ? (
+              <ActivityIndicator color="#FFF" />
+            ) : (
+              <>
+                <Ionicons name="checkmark-circle" size={26} color="#FFF" />
+                <Text style={styles.confirmarBtnText}>Confirmar</Text>
+              </>
+            )}
+          </TouchableOpacity>
         </View>
-      </ThemedView>
-    </KeyboardAvoidingView>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+  },
   container: {
     flex: 1,
-    paddingHorizontal: 24,
-    paddingTop: 40,
   },
   centerAll: {
+    flex: 1,
     justifyContent: "center",
     alignItems: "center",
   },
   header: {
-    marginBottom: 24,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "800",
-    marginBottom: 8,
-  },
-  description: {
-    fontSize: 15,
-    color: "#6B7280",
-    lineHeight: 22,
-  },
-  form: {
-    gap: 20,
-  },
-  row: {
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: 16,
-  },
-  halfWidth: {
-    flex: 1,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#fffffffd",
-    marginBottom: 8,
-    marginLeft: 4,
-  },
-  inputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F3F4F6",
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    height: 56,
-  },
-  /* --- ESTILOS NUEVOS PARA CANTIDAD --- */
-  quantityContainer: {
-    paddingHorizontal: 4, // Menos padding para dar espacio a los botones
-    justifyContent: "space-between",
-  },
-  qtyButton: {
-    width: 40,
-    height: 40,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF", // Fondo blanco para que los botones resalten sobre el input gris
-    borderRadius: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  qtyButtonText: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "#374151",
-    lineHeight: 24,
-  },
-  qtyInput: {
-    flex: 1,
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#1F2937",
-    paddingHorizontal: 8,
-  },
-  /* ------------------------------------ */
-  textInput: {
-    flex: 1,
-    fontSize: 16,
-    color: "#1F2937",
-    height: "100%",
-  },
-  totalInput: {
-    fontWeight: "700",
-    color: "#10B981",
-  },
-  inputText: {
-    flex: 1,
-    fontSize: 16,
-    color: "#1F2937",
-  },
-  placeholderText: {
-    color: "#9CA3AF",
-  },
-  chevron: {
-    fontSize: 12,
-    color: "#6B7280",
-  },
-
-  /* --- ESTILOS DEL MODAL --- */
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    justifyContent: "flex-end",
-  },
-  modalContent: {
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingBottom: Platform.OS === "ios" ? 40 : 24,
-    maxHeight: "85%",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 10,
-  },
-  dragIndicatorContainer: {
-    alignItems: "center",
-    paddingVertical: 12,
-  },
-  dragIndicator: {
-    width: 40,
-    height: 5,
-    backgroundColor: "#E5E7EB",
-    borderRadius: 3,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
     paddingHorizontal: 24,
+    paddingTop: Platform.OS === "android" ? 48 : 20,
     paddingBottom: 16,
   },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#111827",
+  title: {
+    fontSize: 30,
+    fontWeight: "800",
+    letterSpacing: -0.5,
+    marginBottom: 4,
   },
-  closeButtonContainer: {
-    backgroundColor: "#F3F4F6",
-    borderRadius: 20,
-    width: 32,
-    height: 32,
+  subtitle: {
+    fontSize: 15,
+  },
+  cancelBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 4,
+  },
+  listaProductos: {
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+    gap: 12,
+  },
+  emptyText: {
+    fontSize: 16,
+    marginTop: 12,
+    fontWeight: "500",
+  },
+  /* --- BOTONES DE PRODUCTO GRANDES --- */
+  botonProducto: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    borderRadius: 18,
+    borderWidth: 1.5,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  mitadIzquierda: {
+    flex: 1,
+    paddingVertical: 22,
+    paddingHorizontal: 20,
+    justifyContent: "center",
+  },
+  mitadDerecha: {
+    paddingVertical: 22,
+    paddingHorizontal: 18,
     justifyContent: "center",
     alignItems: "center",
   },
-  closeButton: {
-    fontSize: 14,
-    fontWeight: "bold",
-    color: "#4B5563",
+  divisor: {
+    width: 1,
+    marginVertical: 12,
+    backgroundColor: "rgba(255,255,255,0.25)",
   },
-  listContainer: {
-    paddingHorizontal: 24,
-    paddingBottom: 20,
-  },
-  productOption: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
-  },
-  productOptionSelected: {
-    backgroundColor: "#F0FDF4",
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    marginHorizontal: -16,
-    borderBottomWidth: 0,
-  },
-  productOptionName: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1F2937",
+  productoNombre: {
+    fontSize: 20,
+    fontWeight: "700",
     marginBottom: 4,
   },
-  productOptionPrice: {
-    fontSize: 15,
-    color: "#10B981",
+  productoPrecio: {
+    fontSize: 18,
     fontWeight: "700",
   },
-  checkmark: {
-    fontSize: 18,
-    color: "#10B981",
-    fontWeight: "bold",
+  hintText: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.5)",
+    marginTop: 6,
+    fontWeight: "500",
   },
-
-  /* --- BOTONES DE GUARDAR/CANCELAR --- */
-  footer: {
-    marginTop: 12,
-    gap: 12,
+  controlesCarrito: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
-  saveButton: {
-    backgroundColor: "#10B981",
-    height: 56,
+  ctrlBtn: {
+    padding: 2,
+  },
+  badge: {
+    width: 44,
+    height: 44,
     borderRadius: 14,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#10B981",
+  },
+  badgeText: {
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  /* --- FOOTER --- */
+  footer: {
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: Platform.OS === "ios" ? 10 : 14,
+    borderTopWidth: 1,
+  },
+  totalRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  totalLabel: {
+    fontSize: 14,
+    fontWeight: "500",
+    marginBottom: 2,
+  },
+  totalValue: {
+    fontSize: 28,
+    fontWeight: "800",
+    letterSpacing: -0.5,
+  },
+  confirmarBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 18,
+    shadowColor: "#2563EB",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
-    elevation: 4,
+    elevation: 5,
   },
-  saveButtonDisabled: {
-    backgroundColor: "#9CA3AF",
+  confirmarBtnDisabled: {
+    opacity: 0.35,
     shadowOpacity: 0,
     elevation: 0,
   },
-  saveButtonText: {
-    color: "#FFFFFF",
-    fontSize: 17,
-    fontWeight: "700",
-  },
-  cancelButton: {
-    height: 56,
-    borderRadius: 14,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "transparent",
-  },
-  cancelButtonText: {
-    color: "#6B7280",
-    fontSize: 16,
-    fontWeight: "600",
+  confirmarBtnText: {
+    color: "#FFF",
+    fontSize: 18,
+    fontWeight: "800",
   },
 });

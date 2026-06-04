@@ -59,7 +59,16 @@ export const setupDatabase = async (): Promise<SQLite.SQLiteDatabase> => {
         (3, 'Pan de Molde Artesanal', 3500),
         (4, 'Empanada de Pino', 2500),
         (5, 'Queque Casero Vainilla', 4500);
+
+      -- Producto sistema para registrar encargos como ventas (oculto en UI)
+      INSERT OR IGNORE INTO productos (id_producto, nombre, precio_unitario) VALUES
+        (9999, '__ENCARGO_SISTEMA__', 0);
     `);
+
+    // Migraciones seguras: agregar columnas nuevas si no existen
+    try { await dbInstance.execAsync('ALTER TABLE ventas ADD COLUMN descripcion TEXT;'); } catch (_) {}
+    try { await dbInstance.execAsync('ALTER TABLE ventas ADD COLUMN grupo_venta TEXT;'); } catch (_) {}
+    try { await dbInstance.execAsync('ALTER TABLE encargos ADD COLUMN precio_total INTEGER DEFAULT 0;'); } catch (_) {}
 
     console.log("Base de datos inicializada correctamente");
     return dbInstance;
