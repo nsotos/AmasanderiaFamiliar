@@ -15,6 +15,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { setupDatabase } from "../database";
 import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { db as firestore } from "../firebaseConfig";
+import { collection, doc, setDoc } from "firebase/firestore";
 
 interface Producto {
   id_producto: number;
@@ -132,12 +134,32 @@ export default function VentaModalScreen() {
       const db = await setupDatabase();
       // Generar grupo si hay 2 o más ítems distintos en el carrito
       const grupoVenta = carrito.length >= 2 ? `grupo_${Date.now()}` : null;
+      const fechaVenta = new Date();
       for (const item of carrito) {
         await db.runAsync(
           "INSERT INTO ventas (id_producto, cantidad, total_venta, grupo_venta) VALUES (?, ?, ?, ?)",
           [item.producto.id_producto, item.cantidad, item.subtotal, grupoVenta]
         );
       }
+
+      // Generar ID personalizado: YYYYMMDD-HHMMSS-xxxx
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      const rand = Math.random().toString(36).substring(2, 6);
+      const ventaId = `${fechaVenta.getFullYear()}${pad(fechaVenta.getMonth()+1)}${pad(fechaVenta.getDate())}-${pad(fechaVenta.getHours())}${pad(fechaVenta.getMinutes())}${pad(fechaVenta.getSeconds())}-${rand}`;
+
+      // Sync a Firestore: 1 doc por venta completa (fire & forget)
+      setDoc(doc(collection(firestore, "ventas"), ventaId), {
+        id: ventaId,
+        fecha: fechaVenta.toISOString(),
+        total_venta: totalCarrito,
+        grupo_venta: grupoVenta,
+        items: carrito.map(item => ({
+          id_producto: item.producto.id_producto,
+          nombre_producto: item.producto.nombre,
+          cantidad: item.cantidad,
+          subtotal: item.subtotal,
+        })),
+      }).catch((err) => console.warn("[Firebase] Sync venta fallido:", err));
       Alert.alert(
         "¡Venta registrada!",
         `${totalUnidades} unidad(es) — Total: $${totalCarrito.toLocaleString()}`,

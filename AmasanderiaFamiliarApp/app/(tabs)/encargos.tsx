@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   Platform,
   SafeAreaView,
+  RefreshControl,
 } from 'react-native';
 import { setupDatabase } from '../../database';
 import { Colors } from '@/constants/theme';
@@ -19,6 +20,8 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { db as firestore } from '../../firebaseConfig';
+import { collection, doc, setDoc } from 'firebase/firestore';
 
 interface Producto {
   id_producto: number;
@@ -60,12 +63,63 @@ const formatearFechaDisplay = (fechaString: string) => {
   return `${dia}/${mes}/${anio} a las ${hora}`;
 };
 
+const PAGE_SIZE = 15;
+
+type ListItem =
+  | { type: 'header'; dateLabel: string; dayKey: string }
+  | { type: 'encargo'; data: Encargo };
+
+const formatDayLabel = (fechaStr: string): string => {
+  const normalized = fechaStr.replace(' ', 'T') + (fechaStr.includes('Z') ? '' : 'Z');
+  const d = new Date(normalized);
+  if (isNaN(d.getTime())) return fechaStr.substring(0, 10);
+  const hoy = new Date();
+  const ayer = new Date(hoy);
+  ayer.setDate(hoy.getDate() - 1);
+  const manana = new Date(hoy);
+  manana.setDate(hoy.getDate() + 1);
+
+  const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  const num = d.getDate();
+  const mes = meses[d.getMonth()];
+  const anioSufijo = d.getFullYear() !== hoy.getFullYear() ? ` ${d.getFullYear()}` : '';
+
+  if (d.toDateString() === hoy.toDateString()) return `Hoy, ${num} ${mes}`;
+  if (d.toDateString() === ayer.toDateString()) return `Ayer, ${num} ${mes}`;
+  if (d.toDateString() === manana.toDateString()) return `Mañana, ${num} ${mes}`;
+  return `${num} ${mes}${anioSufijo}`;
+};
+
+const buildListData = (lista: Encargo[]): ListItem[] => {
+  const items: ListItem[] = [];
+  let lastKey = '';
+  for (const g of lista) {
+    const normalized = g.fecha_entrega.replace(' ', 'T') + (g.fecha_entrega.includes('Z') ? '' : 'Z');
+    const d = new Date(normalized);
+    const dayKey = isNaN(d.getTime()) ? g.fecha_entrega.substring(0, 10) : d.toDateString();
+    if (dayKey !== lastKey) {
+      items.push({ type: 'header', dateLabel: formatDayLabel(g.fecha_entrega), dayKey });
+      lastKey = dayKey;
+    }
+    items.push({ type: 'encargo', data: g });
+  }
+  return items;
+};
+
 export default function EncargosScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
 
   const [encargos, setEncargos] = useState<Encargo[]>([]);
   const [cargando, setCargando] = useState(true);
+  const [refrescando, setRefrescando] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [cargandoMas, setCargandoMas] = useState(false);
+  
+  // Tabs & Filtro
+  const [activeTab, setActiveTab] = useState<'pendientes' | 'terminados'>('pendientes');
+  const [filtroFecha, setFiltroFecha] = useState<Date | null>(null);
+  const [showPickerFiltro, setShowPickerFiltro] = useState(false);
   // Modal y Pasos
   const [modalVisible, setModalVisible] = useState(false);
   const [pasoModal, setPasoModal] = useState<1 | 2>(1);
@@ -87,29 +141,69 @@ export default function EncargosScreen() {
   const totalCarrito = carrito.reduce((sum, item) => sum + item.subtotal, 0);
   const totalUnidades = carrito.reduce((sum, item) => sum + item.cantidad, 0);
 
-  // ✅ Fix: useFocusEffect para recargar al volver a la pantalla
-  const cargarDatos = async () => {
-    setCargando(true);
+  const getQueryEncargos = (tab: 'pendientes' | 'terminados', conFiltro: boolean) => {
+    let base = `SELECT * FROM encargos WHERE estado ${tab === 'pendientes' ? "!= 'Terminado'" : "= 'Terminado'"}`;
+    if (conFiltro) {
+      base += " AND substr(fecha_entrega, 1, 10) = ?";
+    }
+    // Ordenar: pendientes -> los más cercanos primero (ASC). Terminados -> los más recientes primero (DESC)
+    base += ` ORDER BY fecha_entrega ${tab === 'pendientes' ? 'ASC' : 'DESC'} LIMIT ? OFFSET ?`;
+    return base;
+  };
+
+  const cargarEncargos = async (isRefresh = false, tab = activeTab, fecha = filtroFecha) => {
+    if (isRefresh) setRefrescando(true);
+    else setCargando(true);
     try {
       const db = await setupDatabase();
-      const listaEncargos = await db.getAllAsync(
-        'SELECT * FROM encargos ORDER BY fecha_entrega ASC'
-      ) as Encargo[];
-      setEncargos(listaEncargos);
+      const params: any[] = [];
+      if (fecha) {
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        params.push(`${fecha.getFullYear()}-${pad(fecha.getMonth() + 1)}-${pad(fecha.getDate())}`);
+      }
+      params.push(PAGE_SIZE, 0);
 
+      const listaEncargos = await db.getAllAsync(getQueryEncargos(tab, !!fecha), params) as Encargo[];
+      setEncargos(listaEncargos);
+      setHasMore(listaEncargos.length === PAGE_SIZE);
+
+      // Cargar productos para el modal si es necesario
       const listaProductos = await db.getAllAsync("SELECT * FROM productos WHERE nombre != '__ENCARGO_SISTEMA__'");
       setProductos(listaProductos as Producto[]);
     } catch (error) {
-      console.error('Error al cargar datos:', error);
+      console.error('Error al cargar encargos:', error);
     } finally {
       setCargando(false);
+      setRefrescando(false);
+    }
+  };
+
+  const cargarMas = async () => {
+    if (cargandoMas || !hasMore) return;
+    setCargandoMas(true);
+    try {
+      const db = await setupDatabase();
+      const params: any[] = [];
+      if (filtroFecha) {
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        params.push(`${filtroFecha.getFullYear()}-${pad(filtroFecha.getMonth() + 1)}-${pad(filtroFecha.getDate())}`);
+      }
+      params.push(PAGE_SIZE, encargos.length);
+
+      const resultado = await db.getAllAsync(getQueryEncargos(activeTab, !!filtroFecha), params) as Encargo[];
+      setEncargos(prev => [...prev, ...resultado]);
+      setHasMore(resultado.length === PAGE_SIZE);
+    } catch (error) {
+      console.error('Error al cargar más encargos:', error);
+    } finally {
+      setCargandoMas(false);
     }
   };
 
   useFocusEffect(
     useCallback(() => {
-      cargarDatos();
-    }, [])
+      cargarEncargos();
+    }, [activeTab, filtroFecha])
   );
 
   // Lógica de Carrito
@@ -200,8 +294,33 @@ export default function EncargosScreen() {
         'INSERT INTO encargos (cliente, telefono, detalle, fecha_entrega, estado, precio_total, abono) VALUES (?, ?, ?, ?, ?, ?, ?)',
         [cliente.trim(), telefono.trim(), detalleJson, fechaEntrega, 'Pendiente', precioTotalNum, abonoNum]
       );
+
+      // Generar ID personalizado para el encargo: YYYYMMDD-HHMMSS-xxxx
+      const ahora = new Date();
+      const padE = (n: number) => n.toString().padStart(2, '0');
+      const randE = Math.random().toString(36).substring(2, 6);
+      const encargoId = `${ahora.getFullYear()}${padE(ahora.getMonth()+1)}${padE(ahora.getDate())}-${padE(ahora.getHours())}${padE(ahora.getMinutes())}${padE(ahora.getSeconds())}-${randE}`;
+
+      // Sync a Firestore: 1 doc por encargo (fire & forget)
+      setDoc(doc(collection(firestore, 'encargos'), encargoId), {
+        id: encargoId,
+        cliente: cliente.trim(),
+        telefono: telefono.trim(),
+        detalle: carrito.map(item => ({
+          id_producto: item.producto.id_producto,
+          nombre_producto: item.producto.nombre,
+          cantidad: item.cantidad,
+          subtotal: item.subtotal,
+        })),
+        fecha_entrega: fechaEntrega,
+        estado: 'Pendiente',
+        precio_total: precioTotalNum,
+        abono: abonoNum,
+        fecha_creacion: ahora.toISOString(),
+      }).catch((err) => console.warn('[Firebase] Sync encargo fallido:', err));
+
       setModalVisible(false);
-      await cargarDatos();
+      await cargarEncargos(true);
       Alert.alert('✅ Éxito', 'Encargo guardado correctamente.');
     } catch (error) {
       console.error('Error al guardar encargo:', error);
@@ -246,10 +365,39 @@ export default function EncargosScreen() {
                     'INSERT INTO ventas (id_producto, cantidad, total_venta, descripcion) VALUES (?, ?, ?, ?)',
                     [9999, 1, total, descripcion]
                   );
+                  // Generar ID para la venta del encargo: YYYYMMDD-HHMMSS-xxxx
+                  const ahoraV = new Date();
+                  const padV = (n: number) => n.toString().padStart(2, '0');
+                  const randV = Math.random().toString(36).substring(2, 6);
+                  const ventaEncargoId = `${ahoraV.getFullYear()}${padV(ahoraV.getMonth()+1)}${padV(ahoraV.getDate())}-${padV(ahoraV.getHours())}${padV(ahoraV.getMinutes())}${padV(ahoraV.getSeconds())}-${randV}`;
+
+                  // Parsear items del encargo para el array en Firestore
+                  let itemsEncargo: any[] = [];
+                  try {
+                    const parsed = JSON.parse(encargo.detalle);
+                    if (Array.isArray(parsed)) itemsEncargo = parsed;
+                  } catch {}
+
+                  // Sync venta de encargo a Firestore (fire & forget)
+                  setDoc(doc(collection(firestore, 'ventas'), ventaEncargoId), {
+                    id: ventaEncargoId,
+                    fecha: ahoraV.toISOString(),
+                    total_venta: total,
+                    grupo_venta: null,
+                    tipo: 'encargo',
+                    cliente: encargo.cliente,
+                    items: itemsEncargo.length > 0
+                      ? itemsEncargo.map((i: any) => ({
+                          nombre_producto: i.nombre,
+                          cantidad: i.cantidad,
+                          subtotal: i.subtotal,
+                        }))
+                      : [{ nombre_producto: 'Encargo', cantidad: 1, subtotal: total }],
+                  }).catch((err) => console.warn('[Firebase] Sync venta encargo fallido:', err));
                 }
               }
 
-              await cargarDatos();
+              await cargarEncargos(true);
             } catch (error) {
               console.error('Error al actualizar estado:', error);
               Alert.alert('Error', 'No se pudo actualizar el estado.');
@@ -274,7 +422,7 @@ export default function EncargosScreen() {
             try {
               const db = await setupDatabase();
               await db.runAsync('DELETE FROM encargos WHERE id_encargo = ?', [item.id_encargo]);
-              await cargarDatos();
+              await cargarEncargos(true);
             } catch (error) {
               console.error('Error al eliminar encargo:', error);
               Alert.alert('Error', 'No se pudo eliminar el encargo.');
@@ -290,6 +438,43 @@ export default function EncargosScreen() {
     const fechaEntrega = new Date(fechaString.replace(' ', 'T'));
     const difHoras = (fechaEntrega.getTime() - Date.now()) / (1000 * 60 * 60);
     return difHoras > 0 && difHoras <= 3;
+  };
+
+  const deshacerTerminado = (item: Encargo) => {
+    Alert.alert(
+      'Deshacer pedido completado',
+      '¿Volver a pasar este pedido a "En preparación"? Esto eliminará la venta registrada automáticamente en el historial.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Deshacer Venta',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const db = await setupDatabase();
+              // 1. Revertir estado del encargo
+              await db.runAsync("UPDATE encargos SET estado = 'En preparación' WHERE id_encargo = ?", [item.id_encargo]);
+              
+              // 2. Encontrar y eliminar la venta asociada
+              const total = item.precio_total > 0 ? item.precio_total : item.abono;
+              const ventaIdRes = await db.getAllAsync(
+                "SELECT id_venta FROM ventas WHERE descripcion LIKE ? AND total_venta = ? AND id_producto = 9999 ORDER BY id_venta DESC LIMIT 1",
+                [`Encargo de ${item.cliente}%`, total]
+              ) as any[];
+              
+              if (ventaIdRes.length > 0) {
+                 await db.runAsync("DELETE FROM ventas WHERE id_venta = ?", [ventaIdRes[0].id_venta]);
+              }
+
+              await cargarEncargos(true);
+            } catch (error) {
+              console.error('Error al deshacer:', error);
+              Alert.alert('Error', 'No se pudo deshacer la acción.');
+            }
+          }
+        }
+      ]
+    );
   };
 
   const renderEncargo = ({ item }: { item: Encargo }) => {
@@ -388,15 +573,27 @@ export default function EncargosScreen() {
           style={[
             styles.estadoBtn,
             { backgroundColor: getColorEstado(item.estado) },
-            item.estado === 'Terminado' && styles.estadoBtnTerminado,
+            item.estado === 'Terminado' && { backgroundColor: theme.card, borderWidth: 1, borderColor: '#22C55E' },
           ]}
-          onPress={() => cambiarEstado(item.id_encargo, item.estado)}
-          disabled={item.estado === 'Terminado'}
+          onPress={() => {
+            if (item.estado === 'Terminado') {
+              deshacerTerminado(item);
+            } else {
+              cambiarEstado(item.id_encargo, item.estado);
+            }
+          }}
           activeOpacity={0.8}
         >
-          <Text style={styles.estadoBtnText}>{item.estado.toUpperCase()}</Text>
-          {item.estado !== 'Terminado' && (
-            <Ionicons name="arrow-forward" size={20} color="#FFF" />
+          {item.estado === 'Terminado' ? (
+            <>
+              <Ionicons name="arrow-undo" size={20} color="#22C55E" />
+              <Text style={[styles.estadoBtnText, { color: '#22C55E' }]}>DESHACER (VOLVER A PREPARACIÓN)</Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.estadoBtnText}>{item.estado.toUpperCase()}</Text>
+              <Ionicons name="arrow-forward" size={20} color="#FFF" />
+            </>
           )}
         </TouchableOpacity>
       </View>
@@ -414,33 +611,120 @@ export default function EncargosScreen() {
       <View style={styles.container}>
         {/* Cabecera */}
         <View style={styles.header}>
-          <Text style={[styles.title, { color: theme.text }]} accessibilityRole="header">
-            Agenda de Pedidos
-          </Text>
-          <Text style={[styles.subtitle, { color: theme.icon }]}>
-            {encargos.length > 0
-              ? `${encargos.length} pedido${encargos.length !== 1 ? 's' : ''} registrado${encargos.length !== 1 ? 's' : ''}`
-              : 'Sin pedidos pendientes'}
-          </Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.title, { color: theme.text }]} accessibilityRole="header">
+                Agenda
+              </Text>
+              <Text style={[styles.subtitle, { color: theme.icon }]}>
+                {filtroFecha
+                  ? `Filtrado por: ${filtroFecha.toLocaleDateString()}`
+                  : `Pedidos ${activeTab}`}
+              </Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              {filtroFecha && (
+                <TouchableOpacity
+                  style={{ marginRight: 12 }}
+                  onPress={() => {
+                    setFiltroFecha(null);
+                    cargarEncargos(true, activeTab, null);
+                  }}
+                >
+                  <Ionicons name="close-circle" size={24} color={theme.icon} />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                onPress={() => setShowPickerFiltro(true)}
+                style={{ padding: 8, backgroundColor: theme.card, borderRadius: 12, borderWidth: 1, borderColor: theme.border }}
+              >
+                <Ionicons name="calendar" size={24} color={filtroFecha ? theme.tint : theme.icon} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
+        {showPickerFiltro && (
+          <DateTimePicker
+            value={filtroFecha || new Date()}
+            mode="date"
+            display="default"
+            onChange={(e, date) => {
+              setShowPickerFiltro(Platform.OS === 'ios');
+              if (date) setFiltroFecha(date);
+            }}
+          />
+        )}
+
+        {/* Tabs */}
+        <View style={styles.tabsContainer}>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'pendientes' && [styles.tabActive, { backgroundColor: theme.tint }]]}
+            onPress={() => setActiveTab('pendientes')}
+          >
+            <Text style={[styles.tabText, { color: theme.text }, activeTab === 'pendientes' && styles.tabTextActive]}>
+              Por entregar
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'terminados' && [styles.tabActive, { backgroundColor: theme.tint }]]}
+            onPress={() => setActiveTab('terminados')}
+          >
+            <Text style={[styles.tabText, { color: theme.text }, activeTab === 'terminados' && styles.tabTextActive]}>
+              Terminados
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Lista */}
-        {cargando ? (
+        {cargando && !refrescando ? (
           <View style={styles.centerAll}>
             <ActivityIndicator size="large" color={theme.tint} />
           </View>
         ) : (
           <FlatList
-            data={encargos}
-            keyExtractor={(item) => item.id_encargo.toString()}
-            renderItem={renderEncargo}
+            data={buildListData(encargos)}
+            keyExtractor={(item) =>
+              item.type === 'header' ? `h_${item.dayKey}` : item.data.id_encargo.toString()
+            }
             showsVerticalScrollIndicator={false}
             contentContainerStyle={
               encargos.length === 0 ? styles.listEmpty : styles.listContainer
             }
+            refreshControl={
+              <RefreshControl
+                refreshing={refrescando}
+                onRefresh={() => cargarEncargos(true)}
+                colors={[theme.tint]}
+                tintColor={theme.tint}
+              />
+            }
+            onEndReached={cargarMas}
+            onEndReachedThreshold={0.3}
+            ListFooterComponent={
+              cargandoMas ? (
+                <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+                  <ActivityIndicator size="small" color={theme.tint} />
+                </View>
+              ) : null
+            }
+            renderItem={({ item }) => {
+              if (item.type === 'header') {
+                return (
+                  <View style={styles.dayHeader}>
+                    <View style={[styles.dayHeaderLine, { backgroundColor: theme.border }]} />
+                    <Text style={[styles.dayHeaderText, { color: theme.icon, backgroundColor: theme.background }]}>
+                      {item.dateLabel}
+                    </Text>
+                    <View style={[styles.dayHeaderLine, { backgroundColor: theme.border }]} />
+                  </View>
+                );
+              }
+              return renderEncargo({ item: item.data });
+            }}
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
-                <Ionicons name="clipboard-outline" size={72} color={theme.border} />
+                <Ionicons name={activeTab === 'pendientes' ? 'clipboard-outline' : 'checkmark-done-circle-outline'} size={72} color={theme.border} />
                 <Text style={[styles.emptyTitle, { color: theme.text }]}>Sin pedidos</Text>
                 <Text style={[styles.emptySubtitle, { color: theme.icon }]}>
                   Toca el botón de abajo para agregar un nuevo pedido.
@@ -740,6 +1024,29 @@ const styles = StyleSheet.create({
   emptyContainer: { alignItems: 'center', paddingHorizontal: 32 },
   emptyTitle: { fontSize: 22, fontWeight: '700', marginTop: 16, marginBottom: 8 },
   emptySubtitle: { fontSize: 16, textAlign: 'center', lineHeight: 24 },
+
+  /* --- TABS --- */
+  tabsContainer: {
+    flexDirection: 'row',
+    marginBottom: 16,
+    backgroundColor: '#00000008',
+    borderRadius: 12,
+    padding: 4,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  tabActive: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 },
+  tabText: { fontSize: 14, fontWeight: '600', opacity: 0.6 },
+  tabTextActive: { opacity: 1, color: '#FFF' },
+
+  /* --- DAY HEADERS --- */
+  dayHeader: { flexDirection: 'row', alignItems: 'center', marginVertical: 10, paddingHorizontal: 4 },
+  dayHeaderLine: { flex: 1, height: 1 },
+  dayHeaderText: { fontSize: 11, fontWeight: '700', paddingHorizontal: 10, textTransform: 'uppercase', letterSpacing: 0.8 },
 
   /* --- TARJETA DE ENCARGO --- */
   card: {

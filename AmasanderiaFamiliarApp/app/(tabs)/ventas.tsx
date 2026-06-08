@@ -18,6 +18,7 @@ import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 interface VentaGrupo {
   // Identificador único del grupo (o id_venta si es individual)
@@ -65,6 +66,45 @@ const parsearDescripcion = (desc: string) => {
   return { titulo: desc, subtitulo: null };
 };
 
+// Tipos para la lista con encabezados de día
+type ListItem =
+  | { type: 'header'; dateLabel: string; dayKey: string }
+  | { type: 'venta'; data: VentaGrupo };
+
+// Formatea el encabezado de día (Hoy / Ayer / fecha)
+const formatDayLabel = (fechaStr: string): string => {
+  const normalized = fechaStr.replace(' ', 'T') + (fechaStr.includes('Z') ? '' : 'Z');
+  const d = new Date(normalized);
+  if (isNaN(d.getTime())) return fechaStr.substring(0, 10);
+  const hoy = new Date();
+  const ayer = new Date(hoy);
+  ayer.setDate(hoy.getDate() - 1);
+  const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  const num = d.getDate();
+  const mes = meses[d.getMonth()];
+  const anioSufijo = d.getFullYear() !== hoy.getFullYear() ? ` ${d.getFullYear()}` : '';
+  if (d.toDateString() === hoy.toDateString()) return `Hoy, ${num} ${mes}`;
+  if (d.toDateString() === ayer.toDateString()) return `Ayer, ${num} ${mes}`;
+  return `${num} ${mes}${anioSufijo}`;
+};
+
+// Construye el array de la lista inyectando encabezados por día
+const buildListData = (grupos: VentaGrupo[]): ListItem[] => {
+  const items: ListItem[] = [];
+  let lastKey = '';
+  for (const g of grupos) {
+    const normalized = g.fecha.replace(' ', 'T') + (g.fecha.includes('Z') ? '' : 'Z');
+    const d = new Date(normalized);
+    const dayKey = isNaN(d.getTime()) ? g.fecha.substring(0, 10) : d.toDateString();
+    if (dayKey !== lastKey) {
+      items.push({ type: 'header', dateLabel: formatDayLabel(g.fecha), dayKey });
+      lastKey = dayKey;
+    }
+    items.push({ type: 'venta', data: g });
+  }
+  return items;
+};
+
 export default function VentasScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
@@ -73,8 +113,10 @@ export default function VentasScreen() {
   const [grupos, setGrupos] = useState<VentaGrupo[]>([]);
   const [cargando, setCargando] = useState(true);
   const [refrescando, setRefrescando] = useState(false);
-  const [paginaActual, setPaginaActual] = useState(1);
-  const [totalGrupos, setTotalGrupos] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [cargandoMas, setCargandoMas] = useState(false);
+  const [filtroFecha, setFiltroFecha] = useState<Date | null>(null);
+  const [showPicker, setShowPicker] = useState(false);
 
   // Modal detalle
   const [detalleVisible, setDetalleVisible] = useState(false);
@@ -82,45 +124,43 @@ export default function VentasScreen() {
   const [detalleTitulo, setDetalleTitulo] = useState('');
   const [detalleTotal, setDetalleTotal] = useState(0);
 
-  const totalPaginas = Math.max(1, Math.ceil(totalGrupos / PAGE_SIZE));
+  const getQueryGrupos = (conFiltro: boolean) => `
+    SELECT
+      COALESCE(v.grupo_venta, CAST(v.id_venta AS TEXT)) AS clave,
+      v.grupo_venta,
+      CASE
+        WHEN COUNT(*) > 1 THEN 'Venta de ' || COUNT(*) || ' productos'
+        ELSE COALESCE(v.descripcion, p.nombre, 'Producto desconocido')
+      END AS producto,
+      SUM(v.cantidad) AS cantidad,
+      SUM(v.total_venta) AS total_venta,
+      MAX(v.fecha) AS fecha,
+      COUNT(*) AS num_items,
+      CASE WHEN v.descripcion LIKE 'Encargo de%' THEN 1 ELSE 0 END AS es_encargo
+    FROM ventas v
+    LEFT JOIN productos p ON v.id_producto = p.id_producto
+    ${conFiltro ? "WHERE substr(v.fecha, 1, 10) = ?" : ""}
+    GROUP BY COALESCE(v.grupo_venta, CAST(v.id_venta AS TEXT))
+    ORDER BY MAX(v.fecha) DESC
+    LIMIT ? OFFSET ?
+  `;
 
-  const cargarGrupos = async (pagina: number, isRefresh = false) => {
+  const cargarGrupos = async (isRefresh = false, fecha: Date | null = filtroFecha) => {
     if (isRefresh) setRefrescando(true);
     else setCargando(true);
-
     try {
       const db = await setupDatabase();
+      const params: any[] = [];
+      if (fecha) {
+        // Formato ISO: YYYY-MM-DD
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        params.push(`${fecha.getFullYear()}-${pad(fecha.getMonth() + 1)}-${pad(fecha.getDate())}`);
+      }
+      params.push(PAGE_SIZE, 0);
 
-      // Contar grupos únicos
-      const countResult = await db.getAllAsync(`
-        SELECT COUNT(DISTINCT COALESCE(grupo_venta, CAST(id_venta AS TEXT))) as total
-        FROM ventas
-      `) as { total: number }[];
-      setTotalGrupos(countResult[0]?.total ?? 0);
-
-      // Cargar página agrupada
-      const offset = (pagina - 1) * PAGE_SIZE;
-      const resultado = await db.getAllAsync(`
-        SELECT
-          COALESCE(v.grupo_venta, CAST(v.id_venta AS TEXT)) AS clave,
-          v.grupo_venta,
-          CASE
-            WHEN COUNT(*) > 1 THEN 'Venta de ' || COUNT(*) || ' productos'
-            ELSE COALESCE(v.descripcion, p.nombre, 'Producto desconocido')
-          END AS producto,
-          SUM(v.cantidad) AS cantidad,
-          SUM(v.total_venta) AS total_venta,
-          MAX(v.fecha) AS fecha,
-          COUNT(*) AS num_items,
-          CASE WHEN v.descripcion LIKE 'Encargo de%' THEN 1 ELSE 0 END AS es_encargo
-        FROM ventas v
-        LEFT JOIN productos p ON v.id_producto = p.id_producto
-        GROUP BY COALESCE(v.grupo_venta, CAST(v.id_venta AS TEXT))
-        ORDER BY MAX(v.fecha) DESC
-        LIMIT ? OFFSET ?
-      `, [PAGE_SIZE, offset]) as VentaGrupo[];
-
+      const resultado = await db.getAllAsync(getQueryGrupos(!!fecha), params) as VentaGrupo[];
       setGrupos(resultado);
+      setHasMore(resultado.length === PAGE_SIZE);
     } catch (error) {
       console.error('Error al cargar ventas:', error);
     } finally {
@@ -129,18 +169,41 @@ export default function VentasScreen() {
     }
   };
 
+  const cargarMas = async () => {
+    if (cargandoMas || !hasMore) return;
+    setCargandoMas(true);
+    try {
+      const db = await setupDatabase();
+      const params: any[] = [];
+      if (filtroFecha) {
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        params.push(`${filtroFecha.getFullYear()}-${pad(filtroFecha.getMonth() + 1)}-${pad(filtroFecha.getDate())}`);
+      }
+      params.push(PAGE_SIZE, grupos.length);
+
+      const resultado = await db.getAllAsync(getQueryGrupos(!!filtroFecha), params) as VentaGrupo[];
+      setGrupos(prev => [...prev, ...resultado]);
+      setHasMore(resultado.length === PAGE_SIZE);
+    } catch (error) {
+      console.error('Error al cargar más ventas:', error);
+    } finally {
+      setCargandoMas(false);
+    }
+  };
+
+  const onDateChange = (event: any, selectedDate?: Date) => {
+    setShowPicker(Platform.OS === 'ios');
+    if (selectedDate) {
+      setFiltroFecha(selectedDate);
+      cargarGrupos(false, selectedDate);
+    }
+  };
+
   useFocusEffect(
     useCallback(() => {
-      setPaginaActual(1);
-      cargarGrupos(1);
+      cargarGrupos();
     }, [])
   );
-
-  const irAPagina = (pagina: number) => {
-    if (pagina < 1 || pagina > totalPaginas) return;
-    setPaginaActual(pagina);
-    cargarGrupos(pagina);
-  };
 
   const eliminarGrupo = (grupo: VentaGrupo) => {
     Alert.alert(
@@ -160,7 +223,7 @@ export default function VentasScreen() {
               } else {
                 await db.runAsync('DELETE FROM ventas WHERE id_venta = CAST(? AS INTEGER)', [grupo.clave]);
               }
-              cargarGrupos(paginaActual);
+              cargarGrupos();
             } catch (error) {
               console.error('Error al eliminar venta:', error);
               Alert.alert('Error', 'No se pudo eliminar la venta.');
@@ -218,41 +281,7 @@ export default function VentasScreen() {
     </View>
   );
 
-  const renderPaginacion = (isHeader: boolean) => {
-    if (totalGrupos <= 0) return null;
-    return (
-      <View style={[styles.paginacion, { 
-        borderTopWidth: isHeader ? 0 : 1,
-        borderBottomWidth: isHeader ? 1 : 0,
-        borderTopColor: isHeader ? 'transparent' : theme.border,
-        borderBottomColor: isHeader ? theme.border : 'transparent',
-        marginBottom: isHeader ? 16 : 0,
-        marginTop: isHeader ? 0 : 4,
-      }]}>
-        <TouchableOpacity
-          style={[styles.paginaBtn, { backgroundColor: theme.card, borderColor: theme.border }, paginaActual === 1 && styles.paginaBtnDisabled]}
-          onPress={() => irAPagina(paginaActual - 1)}
-          disabled={paginaActual === 1}
-        >
-          <Ionicons name="chevron-back" size={20} color={paginaActual === 1 ? theme.border : theme.tint} />
-        </TouchableOpacity>
 
-        <View style={[styles.paginaInfo, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[styles.paginaTexto, { color: theme.text }]}>
-            Página <Text style={{ color: theme.tint, fontWeight: '800' }}>{paginaActual}</Text> de <Text style={{ fontWeight: '700' }}>{totalPaginas}</Text>
-          </Text>
-        </View>
-
-        <TouchableOpacity
-          style={[styles.paginaBtn, { backgroundColor: theme.card, borderColor: theme.border }, paginaActual === totalPaginas && styles.paginaBtnDisabled]}
-          onPress={() => irAPagina(paginaActual + 1)}
-          disabled={paginaActual === totalPaginas}
-        >
-          <Ionicons name="chevron-forward" size={20} color={paginaActual === totalPaginas ? theme.border : theme.tint} />
-        </TouchableOpacity>
-      </View>
-    );
-  };
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
@@ -271,19 +300,51 @@ export default function VentasScreen() {
             <Text style={styles.nuevaVentaBtnText}>Nueva Venta</Text>
           </TouchableOpacity>
 
-          <View style={styles.headerTop}>
+          <View style={[styles.headerTop, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
             <View>
               <Text style={[styles.title, { color: theme.text }]} accessibilityRole="header">
                 Historial de Ventas
               </Text>
               <Text style={[styles.subtitle, { color: theme.icon }]}>
-                {totalGrupos > 0
-                  ? `${totalGrupos} registro${totalGrupos !== 1 ? 's' : ''} en total`
-                  : 'Supervisa los ingresos'}
+                {filtroFecha
+                  ? `Filtrado por: ${filtroFecha.toLocaleDateString()}`
+                  : grupos.length > 0
+                    ? `${grupos.length}+ registros cargados`
+                    : 'Supervisa los ingresos'}
               </Text>
+            </View>
+            
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              {filtroFecha && (
+                <TouchableOpacity
+                  style={{ marginRight: 12 }}
+                  onPress={() => {
+                    setFiltroFecha(null);
+                    cargarGrupos(false, null);
+                  }}
+                >
+                  <Ionicons name="close-circle" size={24} color={theme.icon} />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                onPress={() => setShowPicker(true)}
+                style={{ padding: 8, backgroundColor: theme.card, borderRadius: 12, borderWidth: 1, borderColor: theme.border }}
+              >
+                <Ionicons name="calendar" size={24} color={filtroFecha ? theme.tint : theme.icon} />
+              </TouchableOpacity>
             </View>
           </View>
         </View>
+
+        {showPicker && (
+          <DateTimePicker
+            value={filtroFecha || new Date()}
+            mode="date"
+            display="default"
+            onChange={onDateChange}
+            maximumDate={new Date()}
+          />
+        )}
 
         {/* Lista */}
         {cargando && !refrescando ? (
@@ -292,8 +353,10 @@ export default function VentasScreen() {
           </View>
         ) : (
           <FlatList
-            data={grupos}
-            keyExtractor={(item) => item.clave}
+            data={buildListData(grupos)}
+            keyExtractor={(item) =>
+              item.type === 'header' ? `h_${item.dayKey}` : item.data.clave
+            }
             showsVerticalScrollIndicator={false}
             contentContainerStyle={
               grupos.length === 0 ? styles.listEmpty : styles.listContainer
@@ -302,22 +365,44 @@ export default function VentasScreen() {
             refreshControl={
               <RefreshControl
                 refreshing={refrescando}
-                onRefresh={() => { setPaginaActual(1); cargarGrupos(1, true); }}
+                onRefresh={() => cargarGrupos(true)}
                 colors={[theme.tint]}
                 tintColor={theme.tint}
               />
             }
-            ListHeaderComponent={renderPaginacion(true)}
-            ListFooterComponent={renderPaginacion(false)}
+            onEndReached={cargarMas}
+            onEndReachedThreshold={0.3}
+            ListFooterComponent={
+              cargandoMas ? (
+                <View style={styles.footerLoader}>
+                  <ActivityIndicator size="small" color={theme.tint} />
+                </View>
+              ) : null
+            }
             renderItem={({ item }) => {
-              const esGrupo = item.num_items > 1;
-              const esEncargo = !!item.es_encargo;
-              const { titulo, subtitulo } = parsearDescripcion(item.producto);
+              // Encabezado de día
+              if (item.type === 'header') {
+                return (
+                  <View style={styles.dayHeader}>
+                    <View style={[styles.dayHeaderLine, { backgroundColor: theme.border }]} />
+                    <Text style={[styles.dayHeaderText, { color: theme.icon, backgroundColor: theme.background }]}>
+                      {item.dateLabel}
+                    </Text>
+                    <View style={[styles.dayHeaderLine, { backgroundColor: theme.border }]} />
+                  </View>
+                );
+              }
+
+              // Tarjeta de venta
+              const venta = item.data;
+              const esGrupo = venta.num_items > 1;
+              const esEncargo = !!venta.es_encargo;
+              const { titulo, subtitulo } = parsearDescripcion(venta.producto);
               return (
                 <TouchableOpacity
                   style={[styles.saleCard, { backgroundColor: theme.card, borderColor: esEncargo ? '#FBBF24' : theme.border }]}
-                  onPress={() => abrirDetalle(item)}
-                  onLongPress={() => eliminarGrupo(item)}
+                  onPress={() => abrirDetalle(venta)}
+                  onLongPress={() => eliminarGrupo(venta)}
                   delayLongPress={500}
                   activeOpacity={0.75}
                 >
@@ -341,12 +426,12 @@ export default function VentasScreen() {
                       </Text>
                     ) : (
                       <Text style={[styles.saleDate, { color: theme.icon }]}>
-                        {formatearFecha(item.fecha)}
+                        {formatearFecha(venta.fecha)}
                       </Text>
                     )}
                     {subtitulo && (
                       <Text style={[styles.saleDate, { color: theme.icon }]}>
-                        {formatearFecha(item.fecha)}
+                        {formatearFecha(venta.fecha)}
                       </Text>
                     )}
                   </View>
@@ -354,11 +439,11 @@ export default function VentasScreen() {
                   {/* Montos + indicador detalle */}
                   <View style={styles.saleAmounts}>
                     <Text style={[styles.saleTotal, { color: theme.tint }]}>
-                      ${item.total_venta.toLocaleString()}
+                      ${venta.total_venta.toLocaleString()}
                     </Text>
                     <View style={styles.saleQtyRow}>
                       <Text style={[styles.saleQty, { color: theme.icon }]}>
-                        {item.cantidad} un.
+                        {venta.cantidad} un.
                       </Text>
                       {esGrupo && (
                         <Ionicons name="chevron-forward" size={14} color={theme.icon} style={{ marginLeft: 4 }} />
@@ -498,25 +583,28 @@ const styles = StyleSheet.create({
   saleQtyRow: { flexDirection: 'row', alignItems: 'center' },
   saleQty: { fontSize: 13, fontWeight: '500' },
 
-  /* Paginación */
-  paginacion: {
+  /* Encabezados de día e infinite scroll */
+  dayHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    paddingVertical: 16,
-    borderTopWidth: 1,
-    marginTop: 4,
+    marginVertical: 10,
+    paddingHorizontal: 4,
   },
-  paginaBtn: {
-    width: 44, height: 44, borderRadius: 12, borderWidth: 1,
-    justifyContent: 'center', alignItems: 'center',
+  dayHeaderLine: {
+    flex: 1,
+    height: 1,
   },
-  paginaBtnDisabled: { opacity: 0.35 },
-  paginaInfo: {
-    paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12, borderWidth: 1,
+  dayHeaderText: {
+    fontSize: 11,
+    fontWeight: '700',
+    paddingHorizontal: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
   },
-  paginaTexto: { fontSize: 15, fontWeight: '600' },
+  footerLoader: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
 
   nuevaVentaBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
