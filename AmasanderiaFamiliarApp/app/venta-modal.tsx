@@ -15,20 +15,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { setupDatabase } from "../database";
 import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
-import { db as firestore } from "../firebaseConfig";
-import { collection, doc, setDoc } from "firebase/firestore";
-
-interface Producto {
-  id_producto: number;
-  nombre: string;
-  precio_unitario: number;
-}
-
-interface ItemCarrito {
-  producto: Producto;
-  cantidad: number;
-  subtotal: number;
-}
+import { useCarrito } from "@/hooks/useCarrito";
+import type { Producto } from "@/hooks/useCarrito";
+import {
+  registrarVentaDesdeCarrito,
+  syncVentasAFirebase,
+} from "@/utils/ventasService";
 
 export default function VentaModalScreen() {
   const router = useRouter();
@@ -36,18 +28,25 @@ export default function VentaModalScreen() {
   const theme = Colors[colorScheme];
 
   const [productos, setProductos] = useState<Producto[]>([]);
-  const [carrito, setCarrito] = useState<ItemCarrito[]>([]);
+  const {
+    carrito,
+    totalCarrito,
+    totalUnidades,
+    agregarAlCarrito,
+    quitarDelCarrito,
+    eliminarDelCarrito,
+    cantidadEnCarrito,
+  } = useCarrito();
   const [guardando, setGuardando] = useState(false);
   const [cargando, setCargando] = useState(true);
-
-  const totalCarrito = carrito.reduce((sum, item) => sum + item.subtotal, 0);
-  const totalUnidades = carrito.reduce((sum, item) => sum + item.cantidad, 0);
 
   useEffect(() => {
     const cargarProductos = async () => {
       try {
         const db = await setupDatabase();
-        const resultado = await db.getAllAsync("SELECT * FROM productos");
+        const resultado = await db.getAllAsync(
+          "SELECT * FROM productos WHERE id_producto != 9999 AND LOWER(nombre) NOT LIKE '%inactivo%' ORDER BY nombre ASC",
+        );
         setProductos(resultado as Producto[]);
       } catch (error) {
         console.error(error);
@@ -59,71 +58,6 @@ export default function VentaModalScreen() {
     cargarProductos();
   }, []);
 
-  // Toca un producto → agrega 1 unidad al carrito
-  const agregarAlCarrito = (producto: Producto) => {
-    setCarrito((prev) => {
-      const existe = prev.find(
-        (item) => item.producto.id_producto === producto.id_producto
-      );
-      if (existe) {
-        return prev.map((item) =>
-          item.producto.id_producto === producto.id_producto
-            ? {
-                ...item,
-                cantidad: item.cantidad + 1,
-                subtotal: (item.cantidad + 1) * item.producto.precio_unitario,
-              }
-            : item
-        );
-      }
-      return [
-        ...prev,
-        { producto, cantidad: 1, subtotal: producto.precio_unitario },
-      ];
-    });
-  };
-
-  const quitarDelCarrito = (id: number) => {
-    setCarrito((prev) => {
-      return prev
-        .map((item) => {
-          if (item.producto.id_producto === id) {
-            const nuevaCantidad = item.cantidad - 1;
-            if (nuevaCantidad <= 0) return null;
-            return {
-              ...item,
-              cantidad: nuevaCantidad,
-              subtotal: nuevaCantidad * item.producto.precio_unitario,
-            };
-          }
-          return item;
-        })
-        .filter(Boolean) as ItemCarrito[];
-    });
-  };
-
-  const eliminarDelCarrito = (producto: Producto) => {
-    Alert.alert(
-      "Quitar del carrito",
-      `¿Eliminar todas las unidades de "${producto.nombre}"?`,
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Eliminar",
-          style: "destructive",
-          onPress: () =>
-            setCarrito((prev) =>
-              prev.filter((item) => item.producto.id_producto !== producto.id_producto)
-            ),
-        },
-      ]
-    );
-  };
-
-  const cantidadEnCarrito = (id: number) => {
-    return carrito.find((item) => item.producto.id_producto === id)?.cantidad ?? 0;
-  };
-
   const handleConfirmar = async () => {
     if (carrito.length === 0) {
       Alert.alert("Carrito vacío", "Agrega al menos un producto.");
@@ -132,42 +66,22 @@ export default function VentaModalScreen() {
     setGuardando(true);
     try {
       const db = await setupDatabase();
-      // Generar grupo si hay 2 o más ítems distintos en el carrito
-      const grupoVenta = carrito.length >= 2 ? `grupo_${Date.now()}` : null;
-      const fechaVenta = new Date();
-      for (const item of carrito) {
-        await db.runAsync(
-          "INSERT INTO ventas (id_producto, cantidad, total_venta, grupo_venta) VALUES (?, ?, ?, ?)",
-          [item.producto.id_producto, item.cantidad, item.subtotal, grupoVenta]
-        );
-      }
+      const ventasInsertadas = await registrarVentaDesdeCarrito(db, carrito);
 
-      // Generar ID personalizado: YYYYMMDD-HHMMSS-xxxx
-      const pad = (n: number) => n.toString().padStart(2, '0');
-      const rand = Math.random().toString(36).substring(2, 6);
-      const ventaId = `${fechaVenta.getFullYear()}${pad(fechaVenta.getMonth()+1)}${pad(fechaVenta.getDate())}-${pad(fechaVenta.getHours())}${pad(fechaVenta.getMinutes())}${pad(fechaVenta.getSeconds())}-${rand}`;
+      // Sync: un documento por fila SQLite (id = id_venta) — no bloqueante
+      syncVentasAFirebase(db, ventasInsertadas);
 
-      // Sync a Firestore: 1 doc por venta completa (fire & forget)
-      setDoc(doc(collection(firestore, "ventas"), ventaId), {
-        id: ventaId,
-        fecha: fechaVenta.toISOString(),
-        total_venta: totalCarrito,
-        grupo_venta: grupoVenta,
-        items: carrito.map(item => ({
-          id_producto: item.producto.id_producto,
-          nombre_producto: item.producto.nombre,
-          cantidad: item.cantidad,
-          subtotal: item.subtotal,
-        })),
-      }).catch((err) => console.warn("[Firebase] Sync venta fallido:", err));
       Alert.alert(
         "¡Venta registrada!",
         `${totalUnidades} unidad(es) — Total: $${totalCarrito.toLocaleString()}`,
-        [{ text: "OK", onPress: () => router.back() }]
+        [{ text: "OK", onPress: () => router.back() }],
       );
     } catch (error) {
       console.error(error);
-      Alert.alert("Error", "No se pudo guardar la venta.");
+      Alert.alert(
+        "Error",
+        "No se pudo guardar la venta. Inténtalo nuevamente.",
+      );
     } finally {
       setGuardando(false);
     }
@@ -175,14 +89,22 @@ export default function VentaModalScreen() {
 
   if (cargando) {
     return (
-      <View style={[styles.container, styles.centerAll, { backgroundColor: theme.background }]}>
+      <View
+        style={[
+          styles.container,
+          styles.centerAll,
+          { backgroundColor: theme.background },
+        ]}
+      >
         <ActivityIndicator size="large" color={theme.tint} />
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
+    <SafeAreaView
+      style={[styles.safeArea, { backgroundColor: theme.background }]}
+    >
       {/* Cabecera */}
       <View style={styles.header}>
         <View>
@@ -192,7 +114,10 @@ export default function VentaModalScreen() {
           </Text>
         </View>
         <TouchableOpacity
-          style={[styles.cancelBtn, { backgroundColor: theme.card, borderColor: theme.border }]}
+          style={[
+            styles.cancelBtn,
+            { backgroundColor: theme.card, borderColor: theme.border },
+          ]}
           onPress={() => router.back()}
           activeOpacity={0.7}
         >
@@ -231,7 +156,9 @@ export default function VentaModalScreen() {
               <TouchableOpacity
                 style={styles.mitadIzquierda}
                 onPress={() =>
-                  enCarrito ? quitarDelCarrito(item.id_producto) : agregarAlCarrito(item)
+                  enCarrito
+                    ? quitarDelCarrito(item.id_producto)
+                    : agregarAlCarrito(item)
                 }
                 onLongPress={() => enCarrito && eliminarDelCarrito(item)}
                 delayLongPress={500}
@@ -248,7 +175,9 @@ export default function VentaModalScreen() {
                 <Text
                   style={[
                     styles.productoPrecio,
-                    { color: enCarrito ? "rgba(255,255,255,0.85)" : theme.tint },
+                    {
+                      color: enCarrito ? "rgba(255,255,255,0.85)" : theme.tint,
+                    },
                   ]}
                 >
                   ${item.precio_unitario.toLocaleString()}
@@ -259,9 +188,7 @@ export default function VentaModalScreen() {
               </TouchableOpacity>
 
               {/* Divisor visual sutil cuando está en carrito */}
-              {enCarrito && (
-                <View style={styles.divisor} />
-              )}
+              {enCarrito && <View style={styles.divisor} />}
 
               {/* Mitad derecha — controles: − | cantidad | + */}
               <View style={styles.mitadDerecha}>
@@ -272,11 +199,22 @@ export default function VentaModalScreen() {
                       onPress={() => quitarDelCarrito(item.id_producto)}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      <Ionicons name="remove-circle" size={30} color="rgba(255,255,255,0.85)" />
+                      <Ionicons
+                        name="remove-circle"
+                        size={30}
+                        color="rgba(255,255,255,0.85)"
+                      />
                     </TouchableOpacity>
 
-                    <View style={[styles.badge, { backgroundColor: "rgba(255,255,255,0.25)" }]}>
-                      <Text style={[styles.badgeText, { color: "#FFF" }]}>{qty}</Text>
+                    <View
+                      style={[
+                        styles.badge,
+                        { backgroundColor: "rgba(255,255,255,0.25)" },
+                      ]}
+                    >
+                      <Text style={[styles.badgeText, { color: "#FFF" }]}>
+                        {qty}
+                      </Text>
                     </View>
 
                     <TouchableOpacity
@@ -284,12 +222,19 @@ export default function VentaModalScreen() {
                       onPress={() => agregarAlCarrito(item)}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      <Ionicons name="add-circle" size={30} color="rgba(255,255,255,0.85)" />
+                      <Ionicons
+                        name="add-circle"
+                        size={30}
+                        color="rgba(255,255,255,0.85)"
+                      />
                     </TouchableOpacity>
                   </View>
                 ) : (
                   <TouchableOpacity
-                    style={[styles.badge, { backgroundColor: `${theme.tint}18` }]}
+                    style={[
+                      styles.badge,
+                      { backgroundColor: `${theme.tint}18` },
+                    ]}
                     onPress={() => agregarAlCarrito(item)}
                     activeOpacity={0.7}
                   >
@@ -323,7 +268,8 @@ export default function VentaModalScreen() {
             style={[
               styles.confirmarBtn,
               { backgroundColor: theme.tint },
-              (guardando || carrito.length === 0) && styles.confirmarBtnDisabled,
+              (guardando || carrito.length === 0) &&
+                styles.confirmarBtnDisabled,
             ]}
             onPress={handleConfirmar}
             disabled={guardando || carrito.length === 0}

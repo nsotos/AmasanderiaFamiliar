@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, ComponentProps } from "react";
 import {
   StyleSheet,
   Text,
@@ -8,36 +8,52 @@ import {
   SafeAreaView,
   Platform,
   ActivityIndicator,
+  ScrollView,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons"; // Expo incluye esta librería por defecto
+import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { setupDatabase } from "../../database";
+import { SyncIndicator } from "@/components/sync-indicator";
 
+type IconName = ComponentProps<typeof Ionicons>["name"];
+
+interface MenuOption {
+  id: string;
+  title: string;
+  subtitle: string;
+  icon: IconName;
+  color: string;
+  action: () => void;
+}
 export default function HomeScreen() {
   const [cargando, setCargando] = useState(true);
   const router = useRouter();
-  const colorScheme = useColorScheme() ?? 'light';
+  const colorScheme = useColorScheme() ?? "light";
   const theme = Colors[colorScheme];
 
   useEffect(() => {
     const inicializar = async () => {
       try {
         const db = await setupDatabase();
-        // Insertamos los datos solo si no existen para evitar errores de Foreign Key
-        const productosCount = await db.getAllAsync('SELECT COUNT(*) as count FROM productos') as { count: number }[];
+        const productosCount = (await db.getAllAsync(
+          "SELECT COUNT(*) as count FROM productos",
+        )) as { count: number }[];
         if (productosCount[0].count === 0) {
+          // IDs fijos (1..8) para que los productos semilla sean idénticos en
+          // todos los teléfonos y no se dupliquen al sincronizar con Firestore.
+          // Los registros creados por el usuario usan IDs aleatorios (>= 1000).
           await db.execAsync(`
-            INSERT INTO productos (nombre, precio_unitario) VALUES
-            ('Hallulla Especial', 2000),
-            ('Marraqueta Crujiente', 1800),
-            ('Pan de Molde', 3500),
-            ('Empanada de Pino', 2500),
-            ('Empanada Queso', 2200),
-            ('Dobladitas (6 u.)', 3000),
-            ('Pan Amasado', 800),
-            ('Queque Casero', 4500);
+            INSERT INTO productos (id_producto, nombre, precio_unitario) VALUES
+            (1, 'Hallulla Especial', 2000),
+            (2, 'Marraqueta Crujiente', 1800),
+            (3, 'Pan de Molde', 3500),
+            (4, 'Empanada de Pino', 2500),
+            (5, 'Empanada Queso', 2200),
+            (6, 'Dobladitas (6 u.)', 3000),
+            (7, 'Pan Amasado', 800),
+            (8, 'Queque Casero', 4500);
           `);
         }
       } catch (error) {
@@ -50,14 +66,14 @@ export default function HomeScreen() {
     inicializar();
   }, []);
 
-  // Estructuramos las opciones del menú en un arreglo para un código más limpio
-  const menuOptions = [
+  // Estructuramos las 6 opciones del menú en orden lógico
+  const menuOptions: MenuOption[] = [
     {
       id: "ventas",
       title: "Ventas",
       subtitle: "Registrar nueva",
       icon: "cart-outline",
-      color: "#2563EB", // Azul profesional
+      color: "#2563EB",
       action: () => router.push("/ventas"),
     },
     {
@@ -65,60 +81,78 @@ export default function HomeScreen() {
       title: "Pedidos",
       subtitle: "Por entregar",
       icon: "clipboard-outline",
-      color: "#38BDF8", // Celeste claro
-      action: () => router.push('/(tabs)/encargos'),
+      color: "#38BDF8", // Celeste
+      action: () => router.push("/(tabs)/encargos"),
+    },
+    {
+      id: "productos",
+      title: "Productos",
+      subtitle: "Inventario y precios",
+      icon: "cube-outline",
+      color: "#F43F5E", // Rosa/Rojo
+      action: () => router.push("/productos"),
     },
     {
       id: "recetas",
       title: "Recetas",
       subtitle: "Preparaciones",
       icon: "book-outline",
-      color: "#FBBF24", // Amarillo cálido
+      color: "#FBBF24", // Amarillo
       action: () => router.push("/(tabs)/recetas"),
+    },
+    {
+      id: "vecinos",
+      title: "Vecinos",
+      subtitle: "Gestión y fiados",
+      icon: "person",
+      color: "#10B981", // Verde
+      action: () => router.push("/(tabs)/vecinos"),
+    },
+    {
+      id: "estadisticas",
+      title: "Estadísticas",
+      subtitle: "Resumen del negocio",
+      icon: "stats-chart",
+      color: "#8B5CF6", // Morado
+      action: () => router.push("/(tabs)/stats"),
     },
   ];
 
-  const [firstOption, secondOption, thirdOption] = menuOptions;
-  const goToProductos = () => router.push("/productos");
-
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
-      <View style={styles.container}>
-        {/* Cabecera */}
-        <View style={styles.headerTopRow}>
-          <View style={styles.headerSpacer} />
-          <TouchableOpacity
-            style={[styles.smallButton, { backgroundColor: theme.card }]}
-            onPress={goToProductos}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel="Ir a Productos"
-          >
-            {/* @ts-ignore - Tipado de Ionicons */}
-            <Ionicons name="cube-outline" size={20} color={theme.tint} style={styles.smallButtonIcon} />
-            <Text style={[styles.smallButtonText, { color: theme.tint }]}>Productos</Text>
-          </TouchableOpacity>
-        </View>
-
+    <SafeAreaView
+      style={[styles.safeArea, { backgroundColor: theme.background }]}
+    >
+      <ScrollView
+        contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Cabecera Principal */}
         <View style={styles.header}>
-          <Text style={[styles.title, { color: theme.text }]}>Amasandería Familiar</Text>
-          <Text style={[styles.subtitle, { color: theme.text }]}>¿Qué haremos hoy?</Text>
+          <Text style={[styles.title, { color: theme.text }]}>
+            Amasandería Familiar
+          </Text>
+          <Text style={[styles.subtitle, { color: theme.text }]}>
+            ¿Qué haremos hoy?
+          </Text>
+          <SyncIndicator style={styles.syncIndicator} />
         </View>
 
         {cargando ? (
           <ActivityIndicator size="large" color={theme.tint} />
         ) : (
           <View style={styles.gridContainer}>
+            {/* Primera fila: Ventas y Pedidos */}
             <View style={styles.row}>
-              {[firstOption, secondOption].map((option) => (
+              {[menuOptions[0], menuOptions[1]].map((option) => (
                 <TouchableOpacity
                   key={option.id}
-                  style={[styles.card, styles.cardHalf, { backgroundColor: theme.card }]}
+                  style={[
+                    styles.card,
+                    styles.cardHalf,
+                    { backgroundColor: theme.card },
+                  ]}
                   onPress={option.action}
                   activeOpacity={0.7}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Ir a la sección de ${option.title}`}
-                  accessibilityHint={option.subtitle}
                 >
                   <View
                     style={[
@@ -126,39 +160,97 @@ export default function HomeScreen() {
                       { backgroundColor: `${option.color}15` },
                     ]}
                   >
-                    {/* @ts-ignore - Tipado de Ionicons */}
-                    <Ionicons name={option.icon} size={32} color={option.color} />
+                    {/* @ts-ignore */}
+                    <Ionicons
+                      name={option.icon}
+                      size={32}
+                      color={option.color}
+                    />
                   </View>
-                  <Text style={[styles.cardTitle, { color: theme.text }]}>{option.title}</Text>
-                  <Text style={[styles.cardSubtitle, { color: theme.text }]}>{option.subtitle}</Text>
+                  <Text style={[styles.cardTitle, { color: theme.text }]}>
+                    {option.title}
+                  </Text>
+                  <Text style={[styles.cardSubtitle, { color: theme.text }]}>
+                    {option.subtitle}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
 
-            <TouchableOpacity
-              key={thirdOption.id}
-              style={[styles.card, styles.cardFull, { backgroundColor: theme.card }]}
-              onPress={thirdOption.action}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel={`Ir a la sección de ${thirdOption.title}`}
-              accessibilityHint={thirdOption.subtitle}
-            >
-              <View
-                style={[
-                  styles.iconContainer,
-                  { backgroundColor: `${thirdOption.color}15` },
-                ]}
-              >
-                {/* @ts-ignore - Tipado de Ionicons */}
-                <Ionicons name={thirdOption.icon} size={32} color={thirdOption.color} />
-              </View>
-              <Text style={[styles.cardTitle, { color: theme.text }]}>{thirdOption.title}</Text>
-              <Text style={[styles.cardSubtitle, { color: theme.text }]}>{thirdOption.subtitle}</Text>
-            </TouchableOpacity>
+            {/* Segunda fila: Productos y Recetas */}
+            <View style={styles.row}>
+              {[menuOptions[2], menuOptions[3]].map((option) => (
+                <TouchableOpacity
+                  key={option.id}
+                  style={[
+                    styles.card,
+                    styles.cardHalf,
+                    { backgroundColor: theme.card },
+                  ]}
+                  onPress={option.action}
+                  activeOpacity={0.7}
+                >
+                  <View
+                    style={[
+                      styles.iconContainer,
+                      { backgroundColor: `${option.color}15` },
+                    ]}
+                  >
+                    {/* @ts-ignore */}
+                    <Ionicons
+                      name={option.icon}
+                      size={32}
+                      color={option.color}
+                    />
+                  </View>
+                  <Text style={[styles.cardTitle, { color: theme.text }]}>
+                    {option.title}
+                  </Text>
+                  <Text style={[styles.cardSubtitle, { color: theme.text }]}>
+                    {option.subtitle}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Tercera fila: Vecinos y Estadísticas */}
+            <View style={styles.row}>
+              {[menuOptions[4], menuOptions[5]].map((option) => (
+                <TouchableOpacity
+                  key={option.id}
+                  style={[
+                    styles.card,
+                    styles.cardHalf,
+                    { backgroundColor: theme.card },
+                  ]}
+                  onPress={option.action}
+                  activeOpacity={0.7}
+                >
+                  <View
+                    style={[
+                      styles.iconContainer,
+                      { backgroundColor: `${option.color}15` },
+                    ]}
+                  >
+                    {/* @ts-ignore */}
+                    <Ionicons
+                      name={option.icon}
+                      size={32}
+                      color={option.color}
+                    />
+                  </View>
+                  <Text style={[styles.cardTitle, { color: theme.text }]}>
+                    {option.title}
+                  </Text>
+                  <Text style={[styles.cardSubtitle, { color: theme.text }]}>
+                    {option.subtitle}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
         )}
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -166,49 +258,22 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#F8FAFC", // Fondo blanco frío y profesional
+    backgroundColor: "#F8FAFC",
   },
   container: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: 24,
     paddingTop: Platform.OS === "android" ? 40 : 20,
-  },
-  headerTopRow: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  headerSpacer: {
-    flex: 1,
-  },
-  smallButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 30,
-    paddingVertical: 18,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#D1D5DB",
-  },
-  smallButtonIcon: {
-    marginRight: 8,
-  },
-  smallButtonText: {
-    fontSize: 14,
-    fontWeight: "700",
+    paddingBottom: 40,
   },
   header: {
-    marginBottom: 24,
-    marginTop: 50,
+    marginBottom: 32,
+    marginTop: 20,
     alignItems: "center",
   },
-  greeting: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#475569",
-    marginBottom: 8,
-    textAlign: "center",
+  syncIndicator: {
+    marginTop: 16,
+    alignSelf: "center",
   },
   title: {
     fontSize: 30,
@@ -239,7 +304,6 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     padding: 24,
     alignItems: "center",
-    // Sombras modernas y sutiles
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
@@ -249,9 +313,6 @@ const styles = StyleSheet.create({
   },
   cardHalf: {
     width: "48%",
-  },
-  cardFull: {
-    width: "100%",
   },
   iconContainer: {
     width: 64,
@@ -269,7 +330,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   cardSubtitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "500",
     color: "#6B7280",
     textAlign: "center",
