@@ -1,24 +1,36 @@
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
-  Alert,
   StyleSheet,
   Text,
+  View,
   TextInput,
   TouchableOpacity,
-  View,
-  KeyboardAvoidingView,
+  Alert,
+  Switch,
   Platform,
+  ScrollView,
+  KeyboardAvoidingView,
+  ActivityIndicator,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-
+import { Ionicons } from "@expo/vector-icons";
 import { setupDatabase } from "../database";
-
-import { ThemedText } from "@/components/themed-text";
-import { ThemedView } from "@/components/themed-view";
 import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 
-export default function ModalScreen() {
+// ─── IMPORTACIONES DE FIREBASE ───
+import {
+  collection,
+  doc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+} from "firebase/firestore";
+import { db as firestore } from "../firebaseConfig";
+import { eliminarConSync } from "@/utils/deleteSync";
+import { generarId } from "@/utils/ids";
+
+export default function ProductoModal() {
   const router = useRouter();
   const params = useLocalSearchParams<{
     id_producto?: string;
@@ -26,51 +38,182 @@ export default function ModalScreen() {
     precio_unitario?: string;
   }>();
 
-  const isEditing =
-    typeof params.id_producto === "string" && params.id_producto.length > 0;
-
-  const [nombre, setNombre] = useState("");
-  const [precioUnitario, setPrecioUnitario] = useState("");
-  const [guardando, setGuardando] = useState(false);
-  const colorScheme = useColorScheme() ?? 'light';
+  const colorScheme = useColorScheme() ?? "light";
   const theme = Colors[colorScheme];
 
+  const [nombre, setNombre] = useState(params.nombre || "");
+  const [precio, setPrecio] = useState(params.precio_unitario || "");
+  const [ingredientes, setIngredientes] = useState("");
+  const [instrucciones, setInstrucciones] = useState("");
+  const [esReceta, setEsReceta] = useState(false);
+  const [guardando, setGuardando] = useState(false); // Estado para evitar doble toque
+
+  // Cargar datos si estamos en modo edición
   useEffect(() => {
-    if (typeof params.nombre === "string") setNombre(params.nombre);
-    if (typeof params.precio_unitario === "string")
-      setPrecioUnitario(params.precio_unitario);
-  }, [params.nombre, params.precio_unitario]);
+    if (params.id_producto) {
+      const cargarDatosEdicion = async () => {
+        try {
+          const db = await setupDatabase();
+          const checkReceta = await db.getFirstAsync<{
+            ingredientes: string;
+            instrucciones: string;
+          }>("SELECT * FROM recetas WHERE id_producto = ?", [
+            Number(params.id_producto),
+          ]);
+
+          if (checkReceta) {
+            setEsReceta(true);
+            setIngredientes(checkReceta.ingredientes || "");
+            setInstrucciones(checkReceta.instrucciones || "");
+          }
+        } catch (error) {
+          console.error("Error al cargar datos de edición:", error);
+        }
+      };
+      cargarDatosEdicion();
+    }
+  }, [params.id_producto]);
 
   const handleGuardar = async () => {
-    const precio = Number(precioUnitario);
-    if (!nombre.trim() || Number.isNaN(precio)) {
-      Alert.alert(
-        "Datos inválidos",
-        "Revisa el nombre y el precio antes de guardar.",
-      );
+    if (guardando) return; // Bloqueo anti doble-toque
+
+    if (!nombre.trim() || !precio.trim()) {
+      Alert.alert("Faltan datos", "El nombre y el precio son obligatorios.");
       return;
     }
 
-    setGuardando(true);
+    const valorPrecio = parseFloat(precio.replace(/\./g, "").replace(/,/g, ""));
+    if (isNaN(valorPrecio) || valorPrecio <= 0) {
+      Alert.alert("Error", "Ingresa un precio válido mayor a 0.");
+      return;
+    }
+
+    setGuardando(true); // Iniciamos la carga
+
     try {
       const db = await setupDatabase();
-      if (isEditing) {
-        const idProducto = Number(params.id_producto);
+      let idProductoFinal = Number(params.id_producto);
+
+      if (params.id_producto) {
+        // ─── MODO EDICIÓN ───
         await db.runAsync(
-          "UPDATE productos SET nombre = ?, precio_unitario = ? WHERE id_producto = ?",
-          [nombre.trim(), precio, idProducto],
+          "UPDATE productos SET nombre = ?, precio_unitario = ?, sincronizado = 0 WHERE id_producto = ?",
+          [nombre.trim(), valorPrecio, idProductoFinal],
         );
+
+        const teniaReceta = !!(await db.getFirstAsync(
+          "SELECT 1 FROM recetas WHERE id_producto = ?",
+          [idProductoFinal],
+        ));
+
+        if (esReceta) {
+          if (teniaReceta) {
+            await db.runAsync(
+              "UPDATE recetas SET nombre = ?, ingredientes = ?, instrucciones = ?, sincronizado = 0 WHERE id_producto = ?",
+              [
+                nombre.trim(),
+                ingredientes.trim(),
+                instrucciones.trim(),
+                idProductoFinal,
+              ],
+            );
+          } else {
+            await db.runAsync(
+              "INSERT INTO recetas (id_receta, id_producto, nombre, ingredientes, instrucciones) VALUES (?, ?, ?, ?, ?)",
+              [
+                generarId(),
+                idProductoFinal,
+                nombre.trim(),
+                ingredientes.trim(),
+                instrucciones.trim(),
+              ],
+            );
+          }
+        } else if (teniaReceta) {
+          // Solo borrar si realmente había receta: así editar un producto sin
+          // receta cuenta como 1 cambio, no 2 (evita un borrado fantasma).
+          await db.runAsync("DELETE FROM recetas WHERE id_producto = ?", [
+            idProductoFinal,
+          ]);
+        }
+
+        // Firestore Actualización
+        updateDoc(
+          doc(collection(firestore, "productos"), idProductoFinal.toString()),
+          {
+            nombre: nombre.trim(),
+            precio_unitario: valorPrecio,
+          },
+        ).catch((firebaseError) => {
+          console.warn("⚠️ Error en Firestore (Edición):", firebaseError);
+        });
+
+        if (esReceta) {
+          setDoc(
+            doc(collection(firestore, "recetas"), idProductoFinal.toString()),
+            {
+              id_producto: idProductoFinal,
+              nombre: nombre.trim(),
+              ingredientes: ingredientes.trim(),
+              instrucciones: instrucciones.trim(),
+            },
+            { merge: true },
+          ).catch(() => {});
+        } else if (teniaReceta) {
+          eliminarConSync(db, "recetas", idProductoFinal.toString());
+        }
       } else {
+        // ─── MODO CREACIÓN ───
+        console.log("1. Guardando producto en SQLite...");
+        idProductoFinal = generarId();
         await db.runAsync(
-          "INSERT INTO productos (nombre, precio_unitario) VALUES (?, ?)",
-          [nombre.trim(), precio],
+          "INSERT INTO productos (id_producto, nombre, precio_unitario) VALUES (?, ?, ?)",
+          [idProductoFinal, nombre.trim(), valorPrecio],
         );
+        console.log("2. ID generado localmente:", idProductoFinal);
+
+        if (esReceta) {
+          await db.runAsync(
+            "INSERT INTO recetas (id_receta, id_producto, nombre, ingredientes, instrucciones) VALUES (?, ?, ?, ?, ?)",
+            [
+              generarId(),
+              idProductoFinal,
+              nombre.trim(),
+              ingredientes.trim(),
+              instrucciones.trim(),
+            ],
+          );
+        }
+
+        // Firestore Creación
+        setDoc(
+          doc(collection(firestore, "productos"), idProductoFinal.toString()),
+          {
+            id_producto: idProductoFinal,
+            nombre: nombre.trim(),
+            precio_unitario: valorPrecio,
+          },
+        ).catch((firebaseError) => {
+          console.warn("⚠️ Error al subir producto a Firestore:", firebaseError);
+        });
+
+        if (esReceta) {
+          setDoc(
+            doc(collection(firestore, "recetas"), idProductoFinal.toString()),
+            {
+              id_producto: idProductoFinal,
+              nombre: nombre.trim(),
+              ingredientes: ingredientes.trim(),
+              instrucciones: instrucciones.trim(),
+            },
+          ).catch(() => {});
+        }
       }
+
       router.back();
     } catch (error) {
       console.error(error);
       Alert.alert("Error", "No se pudo guardar el producto.");
-    } finally {
       setGuardando(false);
     }
   };
@@ -80,78 +223,155 @@ export default function ModalScreen() {
       style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
-      <ThemedView style={styles.container}>
-        <View style={styles.header}>
-          <ThemedText type="title" style={styles.title}>
-            {isEditing ? "Editar Producto" : "Nuevo Producto"}
-          </ThemedText>
-          <ThemedText style={styles.description}>
-            {isEditing
-              ? "Modifica el nombre y el precio del producto seleccionado."
-              : "Agrega un nuevo producto con nombre y precio para el inventario."}
-          </ThemedText>
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <View style={[styles.header, { borderBottomColor: theme.border }]}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={[styles.closeButton, { backgroundColor: theme.card }]}
+          >
+            <Ionicons name="close" size={24} color={theme.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>
+            {params.id_producto ? "Editar" : "Nuevo"}
+          </Text>
+          <View style={{ width: 40 }} />
         </View>
 
-        <View style={styles.form}>
-          {/* Input: Nombre */}
-          <View>
-            <Text style={styles.label}>Nombre</Text>
-            <View style={styles.inputContainer}>
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.scrollContent}
+        >
+          <View style={[styles.card, { backgroundColor: theme.card }]}>
+            <View style={styles.inputGroup}>
+              <Text style={[styles.label, { color: theme.text }]}>
+                Nombre del producto
+              </Text>
               <TextInput
-                style={styles.textInput}
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: theme.background,
+                    color: theme.text,
+                    borderColor: theme.border,
+                  },
+                ]}
                 value={nombre}
                 onChangeText={setNombre}
-                placeholder="Ej. Manzanas"
-                placeholderTextColor="#94A3B8"
+                placeholder="Ej. Pan Amasado"
+                placeholderTextColor={theme.icon}
+                autoFocus={!params.id_producto}
               />
             </View>
-          </View>
 
-          {/* Input: Precio unitario */}
-          <View>
-            <Text style={styles.label}>Precio unitario ($)</Text>
-            <View style={styles.inputContainer}>
-              <TextInput
-                style={[styles.textInput, styles.priceInput]}
-                value={precioUnitario}
-                onChangeText={setPrecioUnitario}
-                placeholder="0.00"
-                placeholderTextColor="#94A3B8"
-                keyboardType="decimal-pad"
-              />
-            </View>
-          </View>
-
-          {/* Botones */}
-          <View style={styles.footer}>
-            <TouchableOpacity
-              style={[
-                styles.saveButton,
-                guardando && styles.saveButtonDisabled,
-              ]}
-              onPress={handleGuardar}
-              disabled={guardando}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.saveButtonText}>
-                {guardando
-                  ? "Guardando..."
-                  : isEditing
-                    ? "Guardar Cambios"
-                    : "Crear Producto"}
+            <View style={styles.inputGroup}>
+              <Text style={[styles.label, { color: theme.text }]}>
+                Precio Unitario ($)
               </Text>
-            </TouchableOpacity>
+              <TextInput
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: theme.background,
+                    color: theme.text,
+                    borderColor: theme.border,
+                  },
+                ]}
+                value={precio}
+                onChangeText={setPrecio}
+                placeholder="Ej. 1500"
+                placeholderTextColor={theme.icon}
+                keyboardType="numeric"
+              />
+            </View>
 
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={() => router.back()}
-              activeOpacity={0.6}
-            >
-              <Text style={styles.cancelButtonText}>Cancelar</Text>
-            </TouchableOpacity>
+            <View style={styles.switchContainer}>
+              <View style={styles.switchTextContainer}>
+                <Text style={[styles.switchTitle, { color: theme.text }]}>
+                  Es una receta
+                </Text>
+                <Text style={[styles.switchSubtitle, { color: theme.icon }]}>
+                  Guarda ingredientes y pasos de preparación
+                </Text>
+              </View>
+              <Switch
+                value={esReceta}
+                onValueChange={setEsReceta}
+                trackColor={{ false: theme.border, true: theme.tint }}
+                thumbColor="#FFF"
+              />
+            </View>
+
+            {esReceta && (
+              <View style={styles.recetaContainer}>
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.label, { color: theme.text }]}>
+                    Ingredientes
+                  </Text>
+                  <TextInput
+                    style={[
+                      styles.textArea,
+                      {
+                        backgroundColor: theme.background,
+                        color: theme.text,
+                        borderColor: theme.border,
+                      },
+                    ]}
+                    value={ingredientes}
+                    onChangeText={setIngredientes}
+                    placeholder="Ej. 1kg Harina, 10g Levadura..."
+                    placeholderTextColor={theme.icon}
+                    multiline
+                    numberOfLines={3}
+                    textAlignVertical="top"
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.label, { color: theme.text }]}>
+                    Instrucciones
+                  </Text>
+                  <TextInput
+                    style={[
+                      styles.textArea,
+                      {
+                        backgroundColor: theme.background,
+                        color: theme.text,
+                        borderColor: theme.border,
+                      },
+                    ]}
+                    value={instrucciones}
+                    onChangeText={setInstrucciones}
+                    placeholder="Ej. 1. Mezclar harina...\n2. Hornear a 180°C..."
+                    placeholderTextColor={theme.icon}
+                    multiline
+                    numberOfLines={4}
+                    textAlignVertical="top"
+                  />
+                </View>
+              </View>
+            )}
           </View>
-        </View>
-      </ThemedView>
+
+          <TouchableOpacity
+            style={[
+              styles.saveButton,
+              { backgroundColor: guardando ? theme.border : theme.tint },
+            ]}
+            onPress={handleGuardar}
+            activeOpacity={0.8}
+            disabled={guardando}
+          >
+            {guardando ? (
+              <ActivityIndicator color="#FFF" />
+            ) : (
+              <>
+                <Ionicons name="checkmark-circle" size={24} color="#FFF" />
+                <Text style={styles.saveButtonText}>Guardar</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -159,86 +379,107 @@ export default function ModalScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 24,
-    paddingTop: 40,
   },
   header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === "ios" ? 60 : 40,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+  },
+  closeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  scrollContent: {
+    padding: 20,
+  },
+  card: {
+    borderRadius: 24,
+    padding: 20,
     marginBottom: 24,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 3,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: "800",
-    marginBottom: 8,
-  },
-  description: {
-    fontSize: 15,
-    color: "#475569",
-    lineHeight: 22,
-  },
-  form: {
-    gap: 20,
+  inputGroup: {
+    marginBottom: 20,
   },
   label: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "600",
-    color: "#334155",
     marginBottom: 8,
     marginLeft: 4,
   },
-  inputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#EFF6FF",
-    borderRadius: 14,
+  input: {
+    borderWidth: 1,
+    borderRadius: 16,
     paddingHorizontal: 16,
     height: 56,
-  },
-  textInput: {
-    flex: 1,
     fontSize: 16,
-    color: "#0F172A",
-    height: "100%",
   },
-  priceInput: {
+  textArea: {
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
+    fontSize: 16,
+    minHeight: 100,
+  },
+  switchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 12,
+    marginTop: 8,
+  },
+  switchTextContainer: {
+    flex: 1,
+    paddingRight: 16,
+  },
+  switchTitle: {
+    fontSize: 16,
     fontWeight: "600",
-    color: "#2563EB", // Azul profesional para los precios
+    marginBottom: 4,
   },
-  footer: {
-    marginTop: 12,
-    gap: 12,
+  switchSubtitle: {
+    fontSize: 13,
+  },
+  recetaContainer: {
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(0,0,0,0.05)",
   },
   saveButton: {
-    backgroundColor: "#2563EB",
-    height: 56,
-    borderRadius: 14,
-    justifyContent: "center",
+    flexDirection: "row",
     alignItems: "center",
-    shadowColor: "rgba(37,99,235,0.25)",
-    shadowOffset: { width: 0, height: 4 },
+    justifyContent: "center",
+    height: 60,
+    borderRadius: 20,
+    gap: 12,
+    shadowColor: "#2563EB",
+    shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  saveButtonDisabled: {
-    backgroundColor: "#CBD5E1",
-    shadowOpacity: 0,
-    elevation: 0,
+    shadowRadius: 16,
+    elevation: 6,
   },
   saveButtonText: {
-    color: "#FFFFFF",
-    fontSize: 17,
+    color: "#FFF",
+    fontSize: 18,
     fontWeight: "700",
-  },
-  cancelButton: {
-    height: 56,
-    borderRadius: 14,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "transparent",
-  },
-  cancelButtonText: {
-    color: "#475569",
-    fontSize: 16,
-    fontWeight: "600",
+    letterSpacing: 0.5,
   },
 });
